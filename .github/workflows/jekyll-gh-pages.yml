@@ -1,44 +1,56 @@
-# Sample workflow for building and deploying a Jekyll site to GitHub Pages
-name: Deploy Jekyll with GitHub Pages dependencies preinstalled
-
+name: Deploy teaching tools
 on:
-  # Runs on pushes targeting the default branch
   push:
-    branches: ["main"]
-
-  # Allows you to run this workflow manually from the Actions tab
+    branches: [main]
   workflow_dispatch:
-
-# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
-
-# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
 concurrency:
-  group: "pages"
+  group: pages
   cancel-in-progress: false
-
 jobs:
-  # Build job
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-      - name: Build with Jekyll
-        uses: actions/jekyll-build-pages@v1
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Import verified teaching source once
+        if: hashFiles('_teaching-system/package.json') == ''
+        run: |
+          echo 'bfb5fbb18ca3ce429b1dd5fae87360313b52070262ee4bbc186e88130c41c1fc  teaching-system-source.zip' | sha256sum --check
+          python3 - <<'PY'
+          import zipfile, pathlib
+          with zipfile.ZipFile('teaching-system-source.zip') as archive:
+              for name in archive.namelist():
+                  p=pathlib.PurePosixPath(name)
+                  if p.is_absolute() or '..' in p.parts or not (name.startswith('_teaching-system/') or name=='README.md'):
+                      raise ValueError('Unexpected archive path: '+name)
+              archive.extractall('.')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add _teaching-system README.md
+          git commit -m 'Import tested teaching system source'
+          git push
+      - name: Build and test teaching system
+        run: |
+          node _teaching-system/scripts/build.cjs
+          node _teaching-system/scripts/test.cjs
+          cp -R _teaching-system/dist/pages online-teaching-system
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apps-script-deployment
+          path: _teaching-system/dist/apps-script/
+      - uses: actions/configure-pages@v5
+      - uses: actions/jekyll-build-pages@v1
         with:
           source: ./
           destination: ./_site
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-
-  # Deployment job
+      - uses: actions/upload-pages-artifact@v3
   deploy:
     environment:
       name: github-pages
@@ -46,6 +58,5 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-      - name: Deploy to GitHub Pages
+      - uses: actions/deploy-pages@v5
         id: deployment
-        uses: actions/deploy-pages@v5
