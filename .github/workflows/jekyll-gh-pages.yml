@@ -4,7 +4,7 @@ on:
     branches: [main]
   workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
 concurrency:
@@ -18,24 +18,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Import verified teaching source once
-        if: hashFiles('_teaching-system/package.json') == ''
-        run: |
-          echo 'bfb5fbb18ca3ce429b1dd5fae87360313b52070262ee4bbc186e88130c41c1fc  teaching-system-source.zip' | sha256sum --check
-          python3 - <<'PY'
-          import zipfile, pathlib
-          with zipfile.ZipFile('teaching-system-source.zip') as archive:
-              for name in archive.namelist():
-                  p=pathlib.PurePosixPath(name)
-                  if p.is_absolute() or '..' in p.parts or not (name.startswith('_teaching-system/') or name=='README.md'):
-                      raise ValueError('Unexpected archive path: '+name)
-              archive.extractall('.')
-          PY
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add _teaching-system README.md
-          git commit -m 'Import tested teaching system source'
-          git push
       - name: Build and test teaching system
         run: |
           node _teaching-system/scripts/build.cjs
