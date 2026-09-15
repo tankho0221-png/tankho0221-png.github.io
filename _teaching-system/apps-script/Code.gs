@@ -2,14 +2,15 @@
  * Replace the old Code.gs and index.html together. See 安裝與測試指南.md.
  * Every helper ends in '_' so google.script.run cannot call it.
  */
-const APP_ = { version: '3.0.0', ttl: 180, zone: 'Asia/Hong_Kong' };
+const APP_ = { version: '3.1.0', ttl: 180, zone: 'Asia/Hong_Kong' };
 const HEADERS_ = {
   RunsV2: ['ID','CreatedAt','IdentityJSON','Mode','QuestionsJSON','ResultsJSON','Status'],
   RecordsV2: ['RunID','Date','School','Class','Number','Name','Team','Mode','Score','MaxScore','Accuracy','Count'],
   MistakesV2: ['Identity','QuestionID','QuestionJSON','Level','LastReview','Status','LastRunID'],
   RoomsV2: ['PIN','HostHash','StateJSON','QuestionsJSON','CreatedAt'],
   PlayersV2: ['PIN','TokenHash','IdentityJSON','AnswersJSON','Score','Finished'],
-  LessonsV2: ['ID','Date','School','Class','Chapter','SummaryJSON']
+  LessonsV2: ['ID','Date','School','Class','Chapter','SummaryJSON'],
+  InteractiveBank: ['ID','Chapter','Type','QuestionJSON']
 };
 function doGet(e) {
   if(e && e.parameter && e.parameter.bridge==='1') {
@@ -49,7 +50,7 @@ function plain_(s) { return clean_(s,4000).replace(/<[^>]*>/g,'').replace(/&nbsp
 function cell_(s) { const v = clean_(s,4000); return /^[=+@-]/.test(v) ? "'"+v : v; }
 function number_(n,min,max,fallback) { n=Number(n); return Number.isFinite(n) ? Math.max(min,Math.min(max,Math.floor(n))) : fallback; }
 function id_() { return Utilities.getUuid(); }
-function hash_(s) { return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,String(s)).map(b=>('0'+((b+256)%256).toString(16)).slice(-2)).join(''); }
+function hash_(s) { return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,String(s),Utilities.Charset.UTF_8).map(b=>('0'+((b+256)%256).toString(16)).slice(-2)).join(''); }
 function day_() { return Utilities.formatDate(new Date(),APP_.zone,'yyyy-MM-dd'); }
 function identityKey_(p) { return hash_([p.studentSchool,p.studentClass,p.studentNumber].join('|')); }
 function snapshot_(q) { const s=JSON.stringify(q); if(s.length>45000) throw new Error('本次文字量過大，請減少題數至五題或十題。'); return s; }
@@ -71,7 +72,8 @@ function bank_() {
     if (!q.chapter || !q.sentence || !q.targetWord || !q.correct || q.distractors.length!==3 || q.distractors.some(x=>!x) || new Set([q.correct].concat(q.distractors)).size!==4 || seen[q.id]) return false;
     seen[q.id]=true; return true;
   });
-  cachePut_('v2:bank',data); return data;
+  const interactive=rows_('InteractiveBank').map(r=>{try{const q=IQ.validate(JSON.parse(r[3]));q.id=String(r[0]);return q;}catch(e){return null;}}).filter(Boolean);
+  const combined=data.concat(interactive);cachePut_('v2:bank',combined); return combined;
 }
 function shuffle_(arr,seed) {
   const out=arr.slice(); let a=(Number(seed)||1)>>>0;
@@ -112,8 +114,8 @@ function startPractice(profile,opts) {
   return {success:true,runId:run,questions:q};
 }
 function result_(q,a) {
-  a=a||{}; const attempts=Array.isArray(a.attempts)?a.attempts.slice(0,4).map(x=>clean_(x)):[];
-  const choices=[q.correct].concat(q.distractors); if(attempts.some(x=>choices.indexOf(x)<0)) throw new Error('答案資料不符合題目。');
+  a=a||{}; const attempts=Array.isArray(a.attempts)?a.attempts.slice(0,q.kind?12:4).map(x=>clean_(x,500)):[];
+  const choices=[q.correct].concat(q.distractors); if(attempts.some(x=>q.kind?!IQ.validAnswer(q,x):choices.indexOf(x)<0)) throw new Error('答案資料不符合題目。');
   const first=attempts[0]===q.correct && !a.hinted && !a.timedOut;
   const correct=attempts.indexOf(q.correct)>=0 && !a.timedOut;
   return {id:q.id,firstCorrect:first,correct,score:first?3:correct?1:0,attempts,hinted:!!a.hinted,timedOut:!!a.timedOut};
@@ -166,7 +168,7 @@ function room_(pin) {
 }
 function host_(room,token) { if(!token || room.host!==hash_(token)) throw new Error('只有主持人可以操作。'); }
 function writeRoom_(r) { r.state.revision++; table_('RoomsV2').getRange(r.row,3).setValue(JSON.stringify(r.state));CacheService.getScriptCache().remove('v2:room:'+r.pin); }
-function publicQ_(q,pin) { return q ? {id:q.id,chapter:q.chapter,sentence:q.sentence,targetWord:q.targetWord,options:shuffle_([q.correct].concat(q.distractors),Number(pin)+parseInt(q.id.slice(0,6),16))}:null; }
+function publicQ_(q,pin) { if(q?.kind)return {id:q.id,chapter:q.chapter,sentence:q.sentence,targetWord:q.targetWord,kind:q.kind,payload:q.payload,options:[]}; return q ? {id:q.id,chapter:q.chapter,sentence:q.sentence,targetWord:q.targetWord,options:shuffle_([q.correct].concat(q.distractors),Number(pin)+parseInt(q.id.slice(0,6),16))}:null; }
 function createLiveRoom(token,opts) {
   teacher_(token); const q=select_(opts);
   return lock_(()=>{
@@ -233,7 +235,7 @@ function submitLiveAnswer(pin,token,index,choice) {
     const r=a.r; const answers=JSON.parse(a.player[3]);
     if(answers.some(x=>x.index===Number(index))) return {success:true,duplicate:true};
     if(r.state.status!=='PLAYING'||r.state.phase!=='answer'||r.state.index!==Number(index)) throw new Error('本題尚未開放或已截止作答。');
-    const q=r.questions[index]; if([q.correct].concat(q.distractors).indexOf(String(choice))<0) throw new Error('選項無效。');
+    const q=r.questions[index]; if(q.kind?!IQ.validAnswer(q,choice):[q.correct].concat(q.distractors).indexOf(String(choice))<0) throw new Error('選項無效。');
     answers.push({index:Number(index),id:q.id,choice:String(choice),score:choice===q.correct?3:0});
     const score=answers.reduce((n,x)=>n+x.score,0);
     table_('PlayersV2').getRange(a.playerRow,4,1,3).setValues([[JSON.stringify(answers),score,answers.length===r.questions.length]]);
@@ -278,5 +280,17 @@ function importQuestions(token, questions) {
     if(added.length){let sh=ss_().getSheetByName('QuestionBank');if(!sh){sh=ss_().insertSheet('QuestionBank');sh.appendRow(['chapter','sentence','target_word','correct','distractor1','distractor2','distractor3','hint','explanation']);}append_(sh,added);}
     CacheService.getScriptCache().remove('v2:bank');
     return {success:true,added:added.length,skipped};
+  });
+}
+
+function importInteractiveQuestions(token, questions) {
+  teacher_(token);
+  if(!Array.isArray(questions)||!questions.length||questions.length>100)throw Error('每次請加入 1 至 100 題。');
+  const validated=questions.map(raw=>{const q=IQ.validate(raw);const id=hash_('interactive|'+q.kind+'|'+q.chapter+'|'+q.sentence).slice(0,24);return [id,cell_(q.chapter),q.kind,JSON.stringify({...q,key:JSON.parse(q.correct)})];});
+  return lock_(()=>{
+    const existing=new Set(rows_('InteractiveBank').map(r=>String(r[0]))),add=[];let skipped=0;
+    validated.forEach(r=>{if(existing.has(r[0]))skipped++;else{existing.add(r[0]);add.push(r);}});
+    if(add.length)append_(table_('InteractiveBank'),add);
+    CacheService.getScriptCache().remove('v2:bank');return {success:true,added:add.length,skipped};
   });
 }
