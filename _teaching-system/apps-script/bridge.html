@@ -1,0 +1,12 @@
+<!doctype html><html><head><meta charset="utf-8"></head><body><script>
+'use strict';
+const bridgeConfig=__BRIDGE_CONFIG__;
+const allowed=new Set(['getBootstrap','teacherLogin','refreshQuestionCache','getClassroomQuestions','startPractice','savePractice','saveClassroom','createLiveRoom','joinLiveRoom','getLiveState','submitLiveAnswer','hostLiveAction','getTeacherAnalytics','importQuestions']);
+window.addEventListener('message',event=>{
+  const d=event.data;
+  if(event.source!==window.top||event.origin!==bridgeConfig.origin||!d||d.kind!=='rtk-call'||d.channel!==bridgeConfig.channel||typeof d.id!=='string'||d.id.length>80||!allowed.has(d.name)||!Array.isArray(d.args))return;
+  const reply=payload=>window.top.postMessage(Object.assign({kind:'rtk-result',channel:bridgeConfig.channel,id:d.id},payload),bridgeConfig.origin);
+  google.script.run.withSuccessHandler(result=>reply({result})).withFailureHandler(error=>reply({error:error.message||'資料服務暫時未能完成操作。'}))[d.name](...d.args);
+});
+window.top.postMessage({kind:'rtk-ready',channel:bridgeConfig.channel},bridgeConfig.origin);
+</script></body></html>

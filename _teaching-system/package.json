@@ -1,0 +1,15 @@
+{
+  "name": "northern-expedition-chinese",
+  "version": "3.0.0",
+  "private": true,
+  "description": "出師北伐 · 文言策略學堂",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node scripts/build.cjs",
+    "test": "node scripts/test.cjs",
+    "dev": "node scripts/serve.cjs",
+    "check": "node scripts/build.cjs && node scripts/test.cjs"
+  }
+}

@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.zip
+.env*
+!.env.example
+.clasp.json
+.clasprc.json
+*credentials*
+*test-results.json
+.DS_Store

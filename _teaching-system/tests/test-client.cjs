@@ -1,0 +1,32 @@
+const path=require('path');
+const fs=require('fs'),vm=require('vm'),assert=require('assert/strict'),crypto=require('crypto');
+const elements=new Map(),saved=new Map();let options=[],intervals=0;
+function el(id=''){const classes=new Set();return {id,textContent:'',value:id==='chapter'?'all':id==='count'?'5':'',innerHTML:'',style:{},disabled:false,dataset:{},options:[],classList:{add(...a){a.forEach(v=>classes.add(v));},remove(...a){a.forEach(v=>classes.delete(v));},contains(v){return classes.has(v);},toggle(v,b){if(b===undefined)b=!classes.has(v);b?classes.add(v):classes.delete(v);return b;}},setAttribute(){},appendChild(){},focus(){},remove(){},add(o){this.options.push(o);}};}
+const $=id=>{if(!elements.has(id))elements.set(id,el(id));return elements.get(id);};
+const doc={getElementById:$,querySelectorAll:s=>s==='.option'?options:[],createElement:()=>el(),addEventListener(){},body:el(),activeElement:null,hidden:false};
+const ctx=vm.createContext({console,document:doc,navigator:{onLine:true},window:{google:null,addEventListener(){},scrollTo(){},matchMedia:()=>({matches:false})},localStorage:{getItem:k=>saved.get(k)||null,setItem:(k,v)=>saved.set(k,v),removeItem:k=>saved.delete(k)},crypto:crypto.webcrypto,location:{search:'',href:'http://localhost/'},URL,URLSearchParams,Intl,Date,Set,JSON,Object,Array,Number,String,Math,Error,Promise,FormData:class{},Option:class{},setTimeout:()=>1,clearTimeout(){},setInterval:()=>++intervals,clearInterval(){}});
+let source=fs.readFileSync(path.join(__dirname,'../dist/apps-script/index.html'),'utf8').match(/<script>([\s\S]*?)<\/script>/)[1].replace(/bootApp\(\);\s*$/,'');vm.runInContext(source,ctx);ctx.escapeTest=vm.runInContext('esc',ctx);
+const tests=[];function test(name,fn){try{fn();tests.push({name,status:'PASS'});}catch(e){tests.push({name,status:'FAIL',error:e.message});}}
+const question={id:'one',chapter:'出師表',sentence:'深入不毛',targetWord:'不毛',correct:'荒瘠土地',distractors:['頭髮','糧食','人才']};
+function game(type='practice'){ctx.fixture={id:'test-run',type,questions:[question],index:0,phase:0,answers:[],attempts:[],hinted:false,timedOut:false,done:false,score:0,profile:{studentSchool:'S',studentClass:'2A',studentNumber:'01'},seed:2,chapter:'all',awards:{},teams:[{name:'青龍',score:0}],history:[]};vm.runInContext('game=fixture',ctx);options=[question.correct,...question.distractors].map(v=>{const b=el();b.dataset.choice=v;return b;});return ctx.fixture;}
+test('Double-click correct answer records only one result',()=>{const g=game();ctx.answer(question.correct);ctx.answer(question.correct);assert.equal(g.score,3);assert.equal(g.answers.length,1);});
+test('Wrong then correct earns correction score and preserves first-hit failure',()=>{const g=game();ctx.answer('頭髮');ctx.answer(question.correct);assert.equal(g.score,1);assert.equal(g.answers[0].firstCorrect,false);});
+test('Repeated wrong option is ignored',()=>{const g=game();ctx.answer('頭髮');ctx.answer('頭髮');assert.equal(g.attempts.length,1);});
+test('Hinted answer earns one point',()=>{const g=game();ctx.showHint();ctx.answer(question.correct);assert.equal(g.score,1);assert.equal(g.answers[0].firstCorrect,false);});
+test('Timeout produces a reviewable failed answer, only once',()=>{const g=game();ctx.skipQuestion(true);ctx.skipQuestion(true);assert.equal(g.score,0);assert.equal(g.answers.length,1);assert.equal(g.answers[0].timedOut,true);});
+test('Wrong answer does not reset or restart timer',()=>{game();ctx.toggleTimer();const before=intervals;ctx.answer('頭髮');assert.equal(intervals,before);ctx.stopTimer();});
+test('Classroom criteria award once and undo restores availability',()=>{const g=game('classroom');g.phase=3;ctx.award(0,1);ctx.award(0,1);assert.equal(g.teams[0].score,1);ctx.undoScore();assert.equal(g.teams[0].score,0);ctx.award(0,1);assert.equal(g.teams[0].score,1);});
+test('Cannot award classroom points before reveal',()=>{const g=game('classroom');ctx.award(0,0);assert.equal(g.teams[0].score,0);});
+test('Classroom hides choices during first independent-thinking stage',()=>{game('classroom');ctx.renderQuestion();assert($('options').classList.contains('hidden'));});
+test('Switching from classroom to practice restores choices',()=>{game('practice');ctx.renderQuestion();assert(!$('options').classList.contains('hidden'));});
+test('Completed game ignores further advance clicks',()=>{const g=game('classroom');g.completed=true;ctx.advance();assert.equal(g.phase,0);});
+test('Student strings are escaped for DOM interpolation',()=>{assert.equal(ctx.escapeTest('<img src=x onerror="x">'), '&lt;img src=x onerror=&quot;x&quot;&gt;');});
+test('Highlighting does not execute embedded question markup',()=>{const h=ctx.sentenceHTML({...question,sentence:'<script>bad()</script>不毛'});assert(h.includes('&lt;script&gt;'));assert(h.includes('<mark>不毛</mark>'));});
+test('Local vault separates identical words in different questions',()=>{const g=game();g.questions=[question,{...question,id:'two',chapter:'別篇'}];g.answers=[{firstCorrect:false},{firstCorrect:false}];ctx.updateVault();const vault=JSON.parse(saved.get('rtk2:vault'));assert.equal(vault['S|2A|01'].length,2);});
+test('Same-day successful review does not advance mastery',()=>{const g=game('vault');g.answers=[{firstCorrect:true}];ctx.updateVault();const vault=JSON.parse(saved.get('rtk2:vault'));assert.equal(vault['S|2A|01'][0].level,0);});
+test('Seeded choice order is deterministic',()=>{assert.equal(JSON.stringify(ctx.shuffle([1,2,3,4],12)),JSON.stringify(ctx.shuffle([1,2,3,4],12)));});
+test('Live waiting room renders without a selector error',()=>{vm.runInContext("live={pin:'123456',token:'example'}",ctx);ctx.renderLive({state:{status:'WAITING',phase:'think',index:0},question:null,players:[],isHost:false});assert($('live-view').innerHTML.includes('諸將集結'));});
+test('Question paste accepts Sheets columns',()=>{assert.equal(ctx.parseQuestionPaste('篇章\t原句\t字詞\t正解\t錯1\t錯2\t錯3\n出師表\t深入不毛\t不毛\t荒地\t頭髮\t糧食\t人才').length,1);});
+test('Question paste rejects duplicate choices',()=>{assert.throws(()=>ctx.parseQuestionPaste('A\tB\tC\tD\tD\tE\tF'));});
+const result={passed:tests.filter(t=>t.status==='PASS').length,total:tests.length,tests};fs.writeFileSync(path.join(__dirname,'client-test-results.json'),JSON.stringify(result,null,2));console.log(JSON.stringify(result,null,2));if(result.passed!==tests.length)process.exitCode=1;
+module.exports={ctx,source,$,game};

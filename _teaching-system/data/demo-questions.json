@@ -1,0 +1,142 @@
+[
+  {
+    "chapter": "出師表",
+    "sentence": "猥自枉屈，三顧臣於草廬之中",
+    "targetWord": "枉屈",
+    "correct": "委屈屈尊",
+    "distractors": [
+      "枉法屈曲",
+      "受盡委屈",
+      "曲折遷就"
+    ],
+    "hint": "",
+    "explanation": "",
+    "id": "2f8c2e3a2cdc80571ac239b2"
+  },
+  {
+    "chapter": "出師表",
+    "sentence": "深入不毛",
+    "targetWord": "不毛",
+    "correct": "不生草木的荒瘠土地",
+    "distractors": [
+      "沒有毛髮",
+      "未開化之地",
+      "沒有糧食"
+    ],
+    "hint": "",
+    "explanation": "",
+    "id": "bd42a94e74a43d6413a46251"
+  },
+  {
+    "chapter": "出師表",
+    "sentence": "悉以咨之，然後施行，必能裨補闕漏",
+    "targetWord": "裨補闕漏",
+    "correct": "彌補缺點與疏漏",
+    "distractors": [
+      "輔助朝政",
+      "增加利益",
+      "補全律法"
+    ],
+    "hint": "",
+    "explanation": "",
+    "id": "82d2c88614f743fdd36a6849"
+  },
+  {
+    "chapter": "勸學",
+    "sentence": "學不可以已",
+    "targetWord": "已",
+    "correct": "停止",
+    "distractors": [
+      "已經",
+      "完結",
+      "廢棄"
+    ],
+    "hint": "",
+    "explanation": "",
+    "id": "50bca0f0586b4c4b7e5777e4"
+  },
+  {
+    "chapter": "勸學",
+    "sentence": "木直中繩，輮以為輪",
+    "targetWord": "繩",
+    "correct": "墨線",
+    "distractors": [
+      "繩索",
+      "規矩",
+      "標準"
+    ],
+    "hint": "",
+    "explanation": "",
+    "id": "c845911e41639c60911c0a49"
+  },
+  {
+    "chapter": "師說",
+    "sentence": "師者，所以傳道受業解惑也",
+    "targetWord": "傳道",
+    "correct": "傳授儒家仁義聖人之道",
+    "distractors": [
+      "傳授人生大道理",
+      "宣揚道家學說",
+      "講授經學常識"
+    ],
+    "hint": "",
+    "explanation": "",
+    "id": "619119a547cf4cf7ab94d6e1"
+  },
+  {
+    "chapter": "師說",
+    "sentence": "夫庸知其年之先後生於吾乎",
+    "targetWord": "庸",
+    "correct": "豈 / 哪裏",
+    "distractors": [
+      "平庸",
+      "採用",
+      "庸俗"
+    ],
+    "hint": "",
+    "explanation": "",
+    "id": "95ade53ae599c6e0f0fec02d"
+  },
+  {
+    "chapter": "逍遙遊",
+    "sentence": "適莽蒼者，三飡而反",
+    "targetWord": "適",
+    "correct": "往 / 到……去",
+    "distractors": [
+      "適應",
+      "剛好",
+      "適合"
+    ],
+    "hint": "",
+    "explanation": "",
+    "id": "bacb1c2fd6b6748d7791b978"
+  },
+  {
+    "chapter": "六國論",
+    "sentence": "六國互喪，率賂秦耶",
+    "targetWord": "賂",
+    "correct": "賄賂 / 送贈土地",
+    "distractors": [
+      "贈送金錢",
+      "屈服",
+      "講和"
+    ],
+    "hint": "",
+    "explanation": "",
+    "id": "d3f2d03bba76a0bbe3c5c5ac"
+  },
+  {
+    "chapter": "岳陽樓記",
+    "sentence": "越明年，政通人和，百廢具興",
+    "targetWord": "人",
+    "correct": "人民 / 人心",
+    "distractors": [
+      "人才",
+      "官員",
+      "文人"
+    ],
+    "hint": "",
+    "explanation": "",
+    "id": "3251a677f275127d291367aa"
+  }
+]

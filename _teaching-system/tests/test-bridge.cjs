@@ -1,0 +1,17 @@
+const fs=require('fs'),path=require('path'),vm=require('vm'),assert=require('assert/strict');
+const root=path.resolve(__dirname,'..');
+const callbacks={},messages=[],calls=[];
+const top={postMessage:(m,o)=>messages.push({m,o})};
+const runner={withSuccessHandler(fn){this.success=fn;return this;},withFailureHandler(){return this;},getBootstrap(){calls.push('getBootstrap');this.success({success:true,total:10});}};
+const ctx={window:{top,addEventListener:(n,f)=>callbacks[n]=f},google:{script:{run:runner}},Set,Object};
+const html=fs.readFileSync(path.join(root,'apps-script/bridge.html'),'utf8');
+vm.runInNewContext(html.match(/<script>([\s\S]*?)<\/script>/)[1].replace('__BRIDGE_CONFIG__',JSON.stringify({origin:'https://tankho0221-png.github.io',channel:'test-channel'})),ctx);
+let passed=0;const test=(name,fn)=>{fn();passed++;console.log('PASS '+name);};
+const event={source:top,origin:'https://tankho0221-png.github.io',data:{kind:'rtk-call',channel:'test-channel',id:'1',name:'getBootstrap',args:[]}};
+test('Handshake targets only configured GitHub origin',()=>assert.equal(messages[0].o,event.origin));
+test('Untrusted origin cannot call Google methods',()=>{callbacks.message({...event,origin:'https://evil.example'});assert.equal(calls.length,0);});
+test('Wrong window cannot call Google methods',()=>{callbacks.message({...event,source:{}});assert.equal(calls.length,0);});
+test('Wrong channel cannot call Google methods',()=>{callbacks.message({...event,data:{...event.data,channel:'wrong'}});assert.equal(calls.length,0);});
+test('Private helpers cannot be invoked through bridge',()=>{callbacks.message({...event,data:{...event.data,name:'setupSystem_'}});assert.equal(calls.length,0);});
+test('Valid request returns only to expected origin',()=>{callbacks.message(event);assert.equal(calls.length,1);assert.equal(messages[1].m.result.total,10);assert.equal(messages[1].o,event.origin);});
+console.log(JSON.stringify({passed,total:6}));
