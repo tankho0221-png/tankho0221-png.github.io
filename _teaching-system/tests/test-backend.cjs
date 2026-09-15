@@ -11,7 +11,7 @@ const ctx=vm.createContext({console,Date,Set,Map,Number,Object,Array,String,JSON
   PropertiesService:{getScriptProperties:()=>({getProperty:k=>props.get(k)||null})},
   CacheService:{getScriptCache:()=>({get:k=>cache.get(k)||null,put:(k,v)=>cache.set(k,v),remove:k=>cache.delete(k),removeAll:ks=>ks.forEach(k=>cache.delete(k))})},
   LockService:{getScriptLock:()=>({tryLock(){assert.equal(lockHeld,false);lockHeld=true;return true;},releaseLock(){lockHeld=false;}})},
-  Utilities:{getUuid:()=>crypto.randomUUID(),DigestAlgorithm:{SHA_256:'sha256'},computeDigest:(algo,s)=>[...crypto.createHash(algo).update(s).digest()],newBlob:s=>({getBytes:()=>Buffer.from(s)}),formatDate:()=>currentDay},
+  Utilities:{getUuid:()=>crypto.randomUUID(),Charset:{UTF_8:'utf8'},DigestAlgorithm:{SHA_256:'sha256'},computeDigest:(algo,s,charset)=>[...crypto.createHash(algo).update(charset==='utf8'?s:s.replace(/[^\x00-\x7F]/g,'?')).digest()],newBlob:s=>({getBytes:()=>Buffer.from(s)}),formatDate:()=>currentDay},
   HtmlService:{createHtmlOutputFromFile(){return {setTitle(){return this;},addMetaTag(){return this;}};}},ScriptApp:{getService:()=>({getUrl:()=> 'https://script.google.com/test/exec'})}
 });vm.runInContext(fs.readFileSync(path.join(__dirname,'../dist/apps-script/Code.gs'),'utf8'),ctx);
 test('First paint does not read Sheets or Drive',()=>{const before=counters.reads;ctx.doGet();assert.equal(counters.reads,before);});
