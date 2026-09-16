@@ -37,16 +37,15 @@ function renderClassroomInput(){
   root.classList.remove('hidden','interactive-options','iq-revealed');root.classList.add('teacher-answer-panel');
   const i=Math.min(game.selectedTeam||0,game.teams.length-1);game.selectedTeam=i;
   const saved=classroomAnswers(),drafts=classroomDrafts();
-  root.innerHTML=(active?'<div class="teacher-team-picker" role="group" aria-label="選擇要輸入答案的軍團">'+game.teams.map((t,j)=>'<button type="button" class="teacher-team-choice" data-select-team="'+j+'" aria-pressed="'+(i===j)+'"><i class="team-avatar" style="--commander:var(--asset'+j%4+')" aria-hidden="true"></i><strong>'+esc(t.name)+'</strong><small>'+(saved[j]?'已儲存':'待輸入')+'</small></button>').join('')+'</div><p class="teacher-entry-title">正在記錄：<b>'+esc(game.teams[i].name)+'</b> · '+(saved[i]?'可修改後再次儲存':'選好答案後按儲存')+'</p>':'')+'<div id="classroom-editor"></div>';
+  root.innerHTML=(active?'<div class="teacher-team-picker" role="group" aria-label="選擇要輸入答案的軍團">'+game.teams.map((t,j)=>'<button type="button" class="teacher-team-choice" data-select-team="'+j+'" aria-pressed="'+(i===j)+'"><i class="team-avatar" style="--commander:var(--asset'+j%4+')" aria-hidden="true"></i><strong>'+esc(t.name)+'</strong><small>'+(saved[j]?'已儲存':'待輸入')+'</small></button>').join('')+'</div><p class="teacher-entry-title">正在記錄：<b>'+esc(game.teams[i].name)+'</b> · '+(saved[i]?'點選另一答案即更新':'點選答案即儲存')+'</p>':'')+'<div id="classroom-editor"></div>';
   const editor=$('classroom-editor');
   if(q.kind){
     const draft=renderInteractive(editor,q,{draft:active?drafts[i]:undefined,disabled:!active,revealed,readOnlyMessage:'先閱讀題目，再按「輸入各軍答案」。',submitLabel:'儲存'+game.teams[i].name+'答案',onChange:()=>{delete saved[i];persist();renderTeams();},onSubmit:saveClassroomAnswer,seed:game.seed+game.index});
     if(active)drafts[i]=draft;
   }else{
     const selected=(drafts[i]||{}).choice;
-    editor.innerHTML='<div class="options">'+shuffle([q.correct,...q.distractors],game.seed+game.index).map((v,j)=>'<button type="button" class="option '+(revealed&&v===q.correct?'correct':'')+'" data-class-choice="'+esc(v)+'" aria-pressed="'+(active&&selected===v)+'" '+(!active?'disabled':'')+'><span class="letter">'+String.fromCharCode(65+j)+'</span><span>'+esc(v)+'</span></button>').join('')+'</div>'+(active?'<div class="iq-actions"><button type="button" class="btn primary" id="classroom-save" '+(selected===undefined?'disabled':'')+'>儲存'+esc(game.teams[i].name)+'答案</button></div>':'');
-    $$('[data-class-choice]').forEach(b=>b.onclick=()=>{drafts[i]={choice:b.dataset.classChoice};delete saved[i];persist();renderClassroomInput();renderTeams();});
-    if(active)$('classroom-save').onclick=()=>saveClassroomAnswer((drafts[i]||{}).choice);
+    editor.innerHTML='<div class="options">'+shuffle([q.correct,...q.distractors],game.seed+game.index).map((v,j)=>'<button type="button" class="option '+(revealed&&v===q.correct?'correct':'')+'" data-class-choice="'+esc(v)+'" aria-pressed="'+(active&&selected===v)+'" '+(!active?'disabled':'')+'><span class="letter">'+String.fromCharCode(65+j)+'</span><span>'+esc(v)+'</span></button>').join('')+'</div>';
+    $$('[data-class-choice]').forEach(b=>b.onclick=()=>{if(!active)return;drafts[i]={choice:b.dataset.classChoice};saveClassroomAnswer(b.dataset.classChoice);});
   }
   $$('[data-select-team]').forEach(b=>b.onclick=()=>selectClassroomTeam(Number(b.dataset.selectTeam)));
 }
@@ -64,14 +63,14 @@ function adjustClassroomScore(i,delta){
 }
 function renderPhase(){
   const phase=game.phase,step=phase===3?2:phase===0?0:1;
-  const names=['顯示題目','輸入各軍答案','揭曉及核對'],tips=['先讓學生閱讀題目及原文，準備答案。','點軍團圖示，選答案並儲存；依次記錄四軍。教師代填的先後不計速度分。','答對每題 3 分。可在軍功榜按＋／－調整分數，再進入下一題。'];
+  const names=['顯示題目','輸入各軍答案','揭曉及核對'],tips=['先讓學生閱讀題目及原文，準備答案。','點軍團圖示，再點答案即儲存；自動選取下一個未作答軍團。教師代填的先後不計速度分。','答對每題 3 分。可在軍功榜按＋／－調整分數，再進入下一題。'];
   $('phases').innerHTML=names.map((name,i)=>'<div class="phase '+(i===step?'current':'')+'">'+(i+1)+'　'+name+'</div>').join('');
   $('q-label').textContent=names[step];$('coach-title').textContent=names[step];$('coach').textContent=tips[step];
   $('advance').textContent=phase===3?(game.index===game.questions.length-1?'完成戰役 →':'下一題 →'):phase===0?'輸入各軍答案 →':'揭曉及核對 →';
   $('battle-subtitle').textContent='看題 → 點軍團記錄答案 → 揭曉核對；分數可手動加減。';
   const q=game.questions[game.index];if(q.kind)$('question-prompt').textContent=IQ.names[q.kind];
   renderClassroomInput();
-  if(phase===3){$('feedback').textContent='參考答案：'+answerText(q)+'。'+(q.explanation||'請回到原文，說明判斷依據。');$('feedback').classList.remove('hidden');}
+  if(phase===3){$('feedback').innerHTML=teamGainCards(game.teams.map((t,i)=>({...t,roundPoints:classroomAnswers()[i]?.points||0})))+'<p>參考答案：'+esc(answerText(q))+'。'+esc(q.explanation||'請回到原文，說明判斷依據。')+'</p>';$('feedback').classList.remove('hidden');}
 }
 function renderTeams(){
   const answers=classroomAnswers(),q=game.questions[game.index],revealed=game.phase===3,active=[1,2].includes(game.phase);
