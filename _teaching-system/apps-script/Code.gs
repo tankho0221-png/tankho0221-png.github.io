@@ -175,7 +175,7 @@ function createLiveRoom(token,opts) {
     const existing=new Set(rows_('RoomsV2').map(r=>String(r[0]))); let pin;
     for(let i=0;i<100;i++) {pin=String(100000+Math.floor(Math.random()*900000));if(!existing.has(pin))break;pin=null;}
     if(!pin) throw new Error('未能分配房間碼，請重試。');
-    const host=id_()+id_(); const state={status:'WAITING',index:0,phase:'think',revision:1,count:q.length,chapter:opts.chapter || 'all',mode:opts.mode==='race'?'race':'hosted',durationSec:number_(opts.durationSec,120,1800,600)};
+    const host=id_()+id_(); const state={status:'WAITING',index:0,phase:'think',revision:1,count:q.length,chapter:opts.chapter || 'all',mode:opts.mode==='race'?'race':opts.mode==='teacher'?'teacher':'hosted',durationSec:number_(opts.durationSec,120,1800,600)};
     append_(table_('RoomsV2'),[[pin,hash_(host),JSON.stringify(state),snapshot_(q),new Date().toISOString()]]);
     return {success:true,pin,hostToken:host,state};
   });
@@ -209,6 +209,7 @@ function getLiveState(pin,token) {
   const key=hash_(token||''), isHost=v.r.host===key, me=v.players.find(p=>p[1]===key);
   if(!isHost&&!me) throw new Error('房間憑證無效。');
   if(v.r.state.mode==='race')return raceState_(v,isHost,me);
+  if(v.r.state.mode==='teacher')return teacherLiveState_(v,isHost,me);
   const s=v.r.state, q=v.r.questions[s.index], reveal=s.phase==='reveal'||s.status==='FINISHED';
   const myAnswers=me?JSON.parse(me[3]):[];
   const visibleScore=p=>JSON.parse(p[3]).filter(a=>reveal||a.index<s.index).reduce((n,a)=>n+a.score,0);
@@ -222,11 +223,11 @@ function hostLiveAction(pin,token,action) {
   return lock_(()=>{
     const r=room_(pin);host_(r,token);const s=r.state;
     if(s.mode==='race'&&!['start','close'].includes(action))throw new Error('競速模式由學生自行推進，老師毋須逐題操作。');
-    if(action==='start'&&s.status==='WAITING') {s.status='PLAYING';s.phase=s.mode==='race'?'answer':'think';if(s.mode==='race'){s.startedAt=Date.now();s.endsAt=s.startedAt+s.durationSec*1000;}}
+    if(action==='start'&&s.status==='WAITING') {s.status='PLAYING';s.phase=['race','teacher'].includes(s.mode)?'answer':'think';s.answerOpenedAt=Date.now();if(s.mode==='race'){s.startedAt=Date.now();s.endsAt=s.startedAt+s.durationSec*1000;}}
     else if(action==='discuss'&&s.status==='PLAYING'&&s.phase==='think') s.phase='discuss';
     else if(action==='answer'&&s.status==='PLAYING'&&['think','discuss'].includes(s.phase)) {s.phase='answer';s.answerOpenedAt=Date.now();}
     else if(action==='reveal'&&s.status==='PLAYING'&&s.phase==='answer') s.phase='reveal';
-    else if(action==='next'&&s.status==='PLAYING'&&s.phase==='reveal') {if(s.index+1>=r.questions.length)s.status='FINISHED';else {s.index++;s.phase='think';}}
+    else if(action==='next'&&s.status==='PLAYING'&&s.phase==='reveal') {if(s.index+1>=r.questions.length)s.status='FINISHED';else {s.index++;s.phase=s.mode==='teacher'?'answer':'think';s.answerOpenedAt=Date.now();}}
     else if(action==='close') s.status='FINISHED';
     else throw new Error('此階段不能執行該操作，請重新整理戰況。');
     writeRoom_(r);return {success:true};
@@ -244,13 +245,14 @@ function submitLiveAnswer(pin,token,index,choice) {
     const submittedAt=Date.now(),openedAt=r.state.mode==='race'?(answers.length?answers[answers.length-1].submittedAt:r.state.startedAt):r.state.answerOpenedAt;
     const elapsedMs=Number.isFinite(openedAt)?Math.max(0,Math.round((submittedAt-openedAt)/1000)*1000):null;
     const profile=JSON.parse(a.player[2]),tools=profile.raceTools||{},retry=profile.raceRetry;
-    const retried=r.state.mode==='race'&&retry&&retry.index===Number(index);
-    if(r.state.mode==='race'&&tools.rally?.index===Number(index)&&!retried&&choice!==q.correct){
+    const retried=['race','teacher'].includes(r.state.mode)&&retry&&retry.index===Number(index);
+    if(['race','teacher'].includes(r.state.mode)&&tools.rally?.index===Number(index)&&!retried&&choice!==q.correct){
       profile.raceRetry={index:Number(index),wrongChoice:String(choice)};
       table_('PlayersV2').getRange(a.playerRow,3).setValue(JSON.stringify(profile));
       CacheService.getScriptCache().remove('v2:room:'+pin);return {success:true,retry:true};
     }
-    const streak=choice===q.correct&&!retried?(answers.length?answers[answers.length-1].streak||0:0)+1:0;
+    const previous=answers[answers.length-1];
+    const streak=choice===q.correct&&!retried?(previous?.index===Number(index)-1?previous.streak||0:0)+1:0;
     answers.push({index:Number(index),id:q.id,choice:String(choice),score:choice===q.correct?(retried?1:3):0,elapsedMs,submittedAt,streak});
     const score=answers.reduce((n,x)=>n+x.score,0);
     table_('PlayersV2').getRange(a.playerRow,4,1,3).setValues([[JSON.stringify(answers),score,answers.length===r.questions.length]]);
@@ -328,9 +330,9 @@ function raceState_(v,isHost,me){
 function useRaceStratagem(pin,token,index,kind){
   return lock_(()=>{
     const a=liveAccess_(pin,token),s=a.r.state;
-    if(a.isHost||s.mode!=='race'||s.status!=='PLAYING'||Date.now()>=s.endsAt)throw Error('目前不能使用錦囊。');
+    if(a.isHost||!['race','teacher'].includes(s.mode)||s.status!=='PLAYING'||s.phase!=='answer'||(s.mode==='race'&&Date.now()>=s.endsAt))throw Error('目前不能使用錦囊。');
     const answers=JSON.parse(a.player[3]);index=Number(index);
-    if(index!==answers.length||!a.r.questions[index]||!['hint','clue','rally'].includes(kind))throw Error('錦囊或題目無效。');
+    if(index!==(s.mode==='race'?answers.length:s.index)||answers.some(x=>x.index===index)||!a.r.questions[index]||!['hint','clue','rally'].includes(kind))throw Error('錦囊或題目無效。');
     const profile=JSON.parse(a.player[2]),used=profile.raceTools||{};
     if(used[kind]){if(used[kind].index===index)return {success:true,tool:used[kind]};throw Error('此錦囊本場已使用。');}
     const q=a.r.questions[index],tool={index,text:''};
@@ -349,4 +351,16 @@ function useRaceStratagem(pin,token,index,kind){
     table_('PlayersV2').getRange(a.playerRow,3).setValue(JSON.stringify(profile));
     CacheService.getScriptCache().remove('v2:room:'+pin);return {success:true,tool};
   });
+}
+
+/** Teacher-paced rounds keep current correctness private until the host reveals. */
+function teacherLiveState_(v,isHost,me){
+ const s=v.r.state,reveal=s.phase==='reveal'||s.status==='FINISHED',mine=me?JSON.parse(me[3]):[],profile=me?JSON.parse(me[2]):{},q=v.r.questions[s.index];
+ const board=v.players.map(p=>{const u=JSON.parse(p[2]),all=JSON.parse(p[3]),visible=all.filter(a=>reveal||a.index<s.index),correct=visible.filter(a=>a.score>0),current=all.find(a=>a.index===s.index);return {name:u.studentClass+' · '+u.studentNumber+'號',team:['青龍軍','白虎軍','朱雀軍','玄武軍'].includes(u.studentTeam)?u.studentTeam:'青龍軍',score:visible.reduce((n,a)=>n+a.score,0),elapsedMs:correct.every(a=>Number.isFinite(a.elapsedMs))?correct.reduce((n,a)=>n+a.elapsedMs,0):null,answered:!!current,isMe:me?p[1]===me[1]:false,...(reveal?{roundPoints:current?.score||0}:{} )};});
+ const teams=['青龍軍','白虎軍','朱雀軍','玄武軍'].map(name=>{const ps=board.filter(p=>p.team===name);return {name,members:ps.length,answered:ps.filter(p=>p.answered).length,score:ps.reduce((n,p)=>n+p.score,0),roundPoints:reveal?ps.reduce((n,p)=>n+p.roundPoints,0):null};});
+ const current=mine.find(a=>a.index===s.index),question=s.status==='WAITING'?null:publicQ_(q,v.r.pin);
+ if(question&&reveal){question.correct=q.correct;question.explanation=q.explanation;}
+ return {success:true,state:s,isHost,question,players:board,teams,tools:profile.raceTools||{},retryPending:!current&&profile.raceRetry?.index===s.index,submitted:!!current,myScore:board.find(p=>p.isMe)?.score||0,
+ lastResult:!isHost&&reveal?{index:s.index,correct:!!current&&current.score>0,points:current?.score||0,streak:current?.streak||0,answer:q.kind?IQ.format(q):q.correct,explanation:q.explanation||'',choice:current?(q.kind?IQ.format(q,current.choice):current.choice):'未作答'}:null,
+ review:!isHost&&s.status==='FINISHED'?v.r.questions.slice(0,s.index+1).map((x,i)=>{const a=mine.find(z=>z.index===i);return {index:i,prompt:x.sentence,correct:!!a&&a.score>0,answer:x.kind?IQ.format(x):x.correct,explanation:x.explanation||''};}):[]};
 }
