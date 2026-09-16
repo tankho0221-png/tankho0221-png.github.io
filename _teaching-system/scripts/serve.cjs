@@ -5,4 +5,5 @@ http.createServer((req,res)=>{let file;try{file=path.resolve(root,'.'+decodeURIC
   if(file!==root&&!file.startsWith(root+path.sep)){res.writeHead(403).end();return;}
   if(fs.existsSync(file)&&fs.statSync(file).isDirectory())file=path.join(file,'index.html');
   fs.readFile(file,(err,data)=>{if(err){res.writeHead(404).end('Not found');return;}res.writeHead(200,{'Content-Type':types[path.extname(file)]||'application/octet-stream','Cache-Control':'no-cache'});res.end(data);});
-}).listen(8872,'127.0.0.1',()=>console.log('Preview: http://127.0.0.1:8872'));
+}).listen(Number(process.env.PORT)||8872,'127.0.0.1',()=>console.log('Preview: http://127.0.0.1:'+ (process.env.PORT||8872)));
+
