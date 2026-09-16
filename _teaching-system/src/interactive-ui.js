@@ -23,7 +23,7 @@ function renderInteractive(root,q,opts={}) {
       html+='<p class="iq-instruction">點選劃去三個錯項，留下唯一正解。再點可還原。</p><div class="iq-eliminate">'+p.items.map((s,i)=>button(`<span>${state.removed.includes(i)?'×':'○'}</span> ${esc(s)}`,`data-remove="${i}" aria-pressed="${state.removed.includes(i)}"`)).join('')+'</div>';
     }
     html+=`<p class="iq-status" aria-live="polite">${opts.revealed?'參考答案：'+esc(IQ.format(q)):(disabled?(opts.readOnlyMessage||'本階段僅供閱讀，暫未開放作答。'):opts.boardOnly?'教師示範板：可拖放或點選安排；按「揭曉與修訂」查看正解，各組分數由老師評定。':q.kind==='eliminate'?'已劃去 '+state.removed.length+' / 3 項':'完成安排後，再確認答案。')}</p>`;
-    if(!disabled&&!opts.boardOnly)html+='<div class="iq-actions"><button type="button" class="btn ghost" data-reset>重布 · 重設</button><button type="button" class="btn primary" data-submit>確認答案</button></div>';
+    if(!disabled&&!opts.boardOnly)html+='<div class="iq-actions"><button type="button" class="btn ghost" data-reset>重布 · 重設</button><button type="button" class="btn primary" data-submit>'+esc(opts.submitLabel||'確認答案')+'</button></div>';
     root.innerHTML='<div class="iq-board">'+html+'</div>';
     if(opts.revealed)root.classList.add('iq-revealed');else root.classList.remove('iq-revealed');
     if(disabled)return;

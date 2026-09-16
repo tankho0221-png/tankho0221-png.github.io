@@ -58,7 +58,7 @@ function renderLibrary(){
   root.querySelectorAll('[data-book]').forEach(b=>b.onclick=()=>{$('chapter').value=b.dataset.book;updateMission();renderLibrary();$('mission-title').scrollIntoView({behavior:document.body.classList.contains('still')?'auto':'smooth',block:'center'});});
 }
 function openLessonGuide(){
-  showModal('十分鐘課堂 · 每人先答一步',`<div class="lesson-guide"><p>學生毋須裝置；準備紙筆或白板。先選篇章和三至五題，再開「課堂攻城」。</p><ol><li><b>0–2 分鐘｜老師示範</b><p>讀一句，圈一個線索，說出「因為……所以我選……」。</p></li><li><b>2–4 分鐘｜每人先試</b><p>每人寫一個答案或圈一個字。巡視確認留下記號，再進入討論。</p></li><li><b>4–6 分鐘｜兩人互說</b><p>一人指原文，一人說理由；下一題交換角色。</p></li><li><b>6–8 分鐘｜同時亮板</b><p>先展示不同判斷，邀請學生指出證據，再揭曉。</p></li><li><b>8–10 分鐘｜修訂離堂</b><p>用另一顏色改一處，說出今天用過的閱讀方法。</p></li></ol><p>每次只選一個觀察重點：有多少人先答？能否指出原文？訂正後能否再答？</p></div>`,()=>closeModal(),'明白，返回備課');
+  showModal('十分鐘課堂 · 每人先答一步',`<div class="lesson-guide"><p>學生毋須裝置，可先用紙筆整理答案。先選篇章和三至五題，再開「課堂攻城」。</p><ol><li><b>0–2 分鐘｜老師示範</b><p>讀一句，圈一個線索，說出「因為……所以我選……」。</p></li><li><b>2–4 分鐘｜每人先試</b><p>每人寫一個答案或圈一個字。巡視確認留下記號，再進入討論。</p></li><li><b>4–6 分鐘｜兩人互說</b><p>一人指原文，一人說理由；下一題交換角色。</p></li><li><b>6–8 分鐘｜老師記錄四軍答案</b><p>點選軍團圖示，選好答案並儲存，依次記錄四軍；然後按「揭曉及核對」。答對加 3 分，老師可用＋／－調整分數。</p></li><li><b>8–10 分鐘｜修訂離堂</b><p>用另一顏色改一處，說出今天用過的閱讀方法。</p></li></ol><p>每次只選一個觀察重點：有多少人先答？能否指出原文？訂正後能否再答？</p></div>`,()=>closeModal(),'明白，返回備課');
 }
 function initLearning(){
   if(!$('chapter-search')?.addEventListener)return;

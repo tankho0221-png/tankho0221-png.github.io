@@ -1,5 +1,5 @@
 /* session.js — 4.0 feature module; shared app state is initialized by app.js. */
-async function startClassroom(){if(!boot?.total)return;if(!await ensureTeacher())return;showModal('頒布課堂軍令','<p>同學使用紙筆及白板。評分由老師按判斷、證據、解釋各給一分。</p><label for="lesson-class">班別</label><input id="lesson-class" name="className" value="2A" maxlength="20" required><label for="team-count">軍團數目</label><select id="team-count" name="teams"><option>4</option><option>5</option><option>6</option></select>',async f=>{const opts=options();const r=await rpc('getClassroomQuestions',teacherToken,opts);const n=Number(f.get('teams'));game=newGame('classroom',r.questions);game.className=String(f.get('className'));game.school=boot.schools[0]||'';game.teams=Array.from({length:n},(_,i)=>({name:TEAMS[i]||['麒麟軍','鳳凰軍'][i-4],score:0}));game.history=[];closeModal();begin();},'開始課堂攻城');}
+async function startClassroom(){if(!boot?.total)return;if(!await ensureTeacher())return;showModal('頒布課堂軍令','<p>先顯示題目，再由老師逐一記錄四軍答案，最後揭曉。答對每題 3 分；可手動加減分。</p><label for="lesson-class">班別</label><input id="lesson-class" name="className" value="2A" maxlength="20" required><p>青龍軍 · 白虎軍 · 朱雀軍 · 玄武軍</p>',async f=>{const opts=options();const r=await rpc('getClassroomQuestions',teacherToken,opts);const n=4;game=newGame('classroom',r.questions);game.className=String(f.get('className'));game.school=boot.schools[0]||'';game.teams=Array.from({length:n},(_,i)=>({name:TEAMS[i]||['麒麟軍','鳳凰軍'][i-4],score:0}));game.history=[];closeModal();begin();},'開始課堂攻城');}
 function newGame(type,questions,profile={}){return {id:uid(),type,questions,guided:type!=='classroom'&&storage.get('guided',true),learning:{},index:0,phase:0,answers:[],attempts:[],hinted:false,timedOut:false,done:false,score:0,profile,seed:options().seed,chapter:$('chapter').value,date:new Date().toISOString(),awards:{}};}
 async function startPractice(){if(!boot?.total)return;profileDialog(async p=>{try{setBusy(true);const opts=options();const r=await rpc('startPractice',p,opts);game=newGame('practice',r.questions,p);game.runId=r.runId;game.seed=opts.seed;begin();}catch(e){toast(e.message);}finally{setBusy(false);}});}
 function setBusy(b){busy=b;$('start-classroom').disabled=$('start-practice').disabled=b||!boot?.total;}
@@ -9,7 +9,7 @@ function answerText(q){return q.kind?IQ.format(q):q.correct;}
 function sentenceHTML(q){const raw=String(q.sentence),cut=raw.indexOf('【題目】');
   if(raw.startsWith('【原文】')&&cut>0){const passage=raw.slice(4,cut).trim(),prompt=raw.slice(cut+4).trim();return '<details class="question-reading" open><summary>閱讀原文 · 可收合</summary><div class="question-passage">'+esc(passage)+'</div></details><div class="question-task">'+esc(prompt)+'</div>';}
   const t=raw,needle=String(q.targetWord);const i=t.indexOf(needle);return i<0?esc(t):esc(t.slice(0,i))+'<mark>'+esc(needle)+'</mark>'+esc(t.slice(i+needle.length));}
-function renderQuestion(){$('options').classList.remove('hidden','interactive-options','iq-revealed');stopTimer();remaining=game.type==='classroom'?30:60;updateTimer();const q=game.questions[game.index],classroom=game.type==='classroom';document.body.classList.toggle('practice-mode',!classroom);document.body.classList.toggle('review-mode',game.type==='vault');
+function renderQuestion(){$('options').classList.remove('hidden','interactive-options','iq-revealed','teacher-answer-panel');stopTimer();remaining=game.type==='classroom'?30:60;updateTimer();const q=game.questions[game.index],classroom=game.type==='classroom';document.body.classList.toggle('practice-mode',!classroom);document.body.classList.toggle('review-mode',game.type==='vault');
   $('battle-type').textContent=classroom?'課堂攻城 · 教師主持':game.type==='vault'?'溫故知新 · 個人重溫':'單騎千里 · 獨立研習';$('battle-title').textContent=q.chapter;$('battle-subtitle').textContent=classroom?'每人先留下答案，再與同伴商議。':'仔細閱讀句子，按語境判斷字詞意思。';$('question-count').textContent=`第 ${game.index+1} 關 / 共 ${game.questions.length} 關`;$('progress').style.width=(game.index/game.questions.length*100)+'%';$('q-chapter').textContent='《'+q.chapter+'》';$('sentence').innerHTML=sentenceHTML(q);$('question-prompt').textContent=`句中「${q.targetWord}」的意思是甚麼？`;
   $('print-before').classList.toggle('hidden',!classroom);$('teams-card').classList.toggle('hidden',!classroom);$('practice-card').classList.toggle('hidden',classroom);$('phases').classList.toggle('hidden',!classroom);$('skip').classList.toggle('hidden',classroom||game.done);$('personal-score').textContent=game.score;
   $('hint-box').classList.add('hidden');$('feedback').classList.add('hidden');$('hint').disabled=game.done;$('advance').classList.toggle('hidden',!classroom&&!game.done);
@@ -19,21 +19,72 @@ function renderQuestion(){$('options').classList.remove('hidden','interactive-op
   if(q.kind&&!classroom){$('question-prompt').textContent=IQ.names[q.kind];$('battle-subtitle').textContent='點選或拖曳完成任務，再確認答案。';renderInteractive($('options'),q,{disabled:classroom||game.done,revealed:game.done||(classroom&&game.phase===3),onSubmit:answer,seed:game.seed+game.index});}
   if(game.hinted&&!game.done)showHint(false);resetLearningPanel();
 }
-function renderPhase(){const phase=game.phase;$('phases').innerHTML=PHASES.map((s,i)=>`<div class="phase ${i===phase?'current':''}">${i+1}　${s}</div>`).join('');$('q-label').textContent=PHASES[phase];$('coach-title').textContent=PHASES[phase];$('coach').textContent=COACH[phase];$('options').classList.toggle('hidden',phase===0);$('advance').textContent=phase===3?(game.index===game.questions.length-1?'完成戰役 →':'下一關 →'):['進入商議 →','準備亮板 →','揭曉與修訂 →'][phase];
-  const q=game.questions[game.index];
+function classroomAnswers(){game.teamAnswers=game.teamAnswers||{};return game.teamAnswers[game.index]||(game.teamAnswers[game.index]={});}
+function classroomDrafts(){game.teamDrafts=game.teamDrafts||{};return game.teamDrafts[game.index]||(game.teamDrafts[game.index]={});}
+function selectClassroomTeam(i){if(game.phase!==1&&game.phase!==2)return;game.selectedTeam=i;persist();renderClassroomInput();renderTeams();}
+function saveClassroomAnswer(value){
+  if(!game||game.type!=='classroom'||![1,2].includes(game.phase))return;
+  const q=game.questions[game.index],i=game.selectedTeam||0;
+  if(q.kind?!IQ.validAnswer(q,value):![q.correct,...q.distractors].includes(value))return;
+  classroomAnswers()[i]={value};persist();
+  toast(game.teams[i].name+'答案已儲存。');
+  const next=game.teams.findIndex((_,j)=>!classroomAnswers()[j]);if(next>=0)game.selectedTeam=next;persist();
+  renderClassroomInput();renderTeams();
+}
+function classroomAnswerLabel(q,v){return q.kind?IQ.format(q,v):v;}
+function renderClassroomInput(){
+  const root=$('options'),q=game.questions[game.index],active=[1,2].includes(game.phase),revealed=game.phase===3;
+  root.classList.remove('hidden','interactive-options','iq-revealed');root.classList.add('teacher-answer-panel');
+  const i=Math.min(game.selectedTeam||0,game.teams.length-1);game.selectedTeam=i;
+  const saved=classroomAnswers(),drafts=classroomDrafts();
+  root.innerHTML=(active?'<div class="teacher-team-picker" role="group" aria-label="選擇要輸入答案的軍團">'+game.teams.map((t,j)=>'<button type="button" class="teacher-team-choice" data-select-team="'+j+'" aria-pressed="'+(i===j)+'"><i class="team-avatar" style="--commander:var(--asset'+j%4+')" aria-hidden="true"></i><strong>'+esc(t.name)+'</strong><small>'+(saved[j]?'已儲存':'待輸入')+'</small></button>').join('')+'</div><p class="teacher-entry-title">正在記錄：<b>'+esc(game.teams[i].name)+'</b> · '+(saved[i]?'可修改後再次儲存':'選好答案後按儲存')+'</p>':'')+'<div id="classroom-editor"></div>';
+  const editor=$('classroom-editor');
   if(q.kind){
-    $('question-prompt').textContent=IQ.names[q.kind];
-    $('battle-subtitle').textContent='老師可在商議及亮板階段拖放示範；各組評分仍由老師給分。';
-    game.classroomDrafts=game.classroomDrafts||{};
-    const draft=renderInteractive($('options'),q,{draft:game.classroomDrafts[game.index],disabled:phase===0||phase===3,revealed:phase===3,boardOnly:true,onChange:persist,seed:game.seed+game.index});
-    if(phase!==3)game.classroomDrafts[game.index]=draft;
+    const draft=renderInteractive(editor,q,{draft:active?drafts[i]:undefined,disabled:!active,revealed,readOnlyMessage:'先閱讀題目，再按「輸入各軍答案」。',submitLabel:'儲存'+game.teams[i].name+'答案',onChange:()=>{delete saved[i];persist();renderTeams();},onSubmit:saveClassroomAnswer,seed:game.seed+game.index});
+    if(active)drafts[i]=draft;
+  }else{
+    const selected=(drafts[i]||{}).choice;
+    editor.innerHTML='<div class="options">'+shuffle([q.correct,...q.distractors],game.seed+game.index).map((v,j)=>'<button type="button" class="option '+(revealed&&v===q.correct?'correct':'')+'" data-class-choice="'+esc(v)+'" aria-pressed="'+(active&&selected===v)+'" '+(!active?'disabled':'')+'><span class="letter">'+String.fromCharCode(65+j)+'</span><span>'+esc(v)+'</span></button>').join('')+'</div>'+(active?'<div class="iq-actions"><button type="button" class="btn primary" id="classroom-save" '+(selected===undefined?'disabled':'')+'>儲存'+esc(game.teams[i].name)+'答案</button></div>':'');
+    $$('[data-class-choice]').forEach(b=>b.onclick=()=>{drafts[i]={choice:b.dataset.classChoice};delete saved[i];persist();renderClassroomInput();renderTeams();});
+    if(active)$('classroom-save').onclick=()=>saveClassroomAnswer((drafts[i]||{}).choice);
   }
-  if(phase===3){$$('.option').forEach(b=>b.classList.toggle('correct',b.dataset.choice===q.correct));$('feedback').textContent=`參考釋義：${answerText(q)}。${q.explanation||'請回到句中，說明這個解釋為何符合語境；並在自己的答案補上一處理由。'}`;$('feedback').classList.remove('hidden');} }
-function renderTeams(){const key=game.index;const checks=game.awards[key]||{};$('teams').innerHTML=classroomReadiness()+game.teams.map((t,i)=>`<div class="team"><div class="team-name"><span class="team-identity"><i class="team-avatar" style="--commander:var(--asset${i%4})" aria-hidden="true"></i>${esc(t.name)} <small class="class-rank">第 ${1+game.teams.filter(other=>other.score>t.score).length} 位</small></span><strong>${t.score}</strong></div><div class="team-controls">${['判斷','證據','解釋'].map((s,j)=>`<button class="btn ghost" data-team="${i}" data-criterion="${j}" ${checks[i+':'+j]||game.phase!==3?'disabled':''}>${s} ＋1</button>`).join('')}</div><div class="bar"><i style="width:${Math.min(100,t.score/(game.questions.length*3)*100)}%"></i></div></div>`).join('');$$('[data-team]').forEach(b=>b.onclick=()=>award(Number(b.dataset.team),Number(b.dataset.criterion)));$('undo-score').disabled=!game.history.length;bindReadiness();}
+  $$('[data-select-team]').forEach(b=>b.onclick=()=>selectClassroomTeam(Number(b.dataset.selectTeam)));
+}
+function gradeClassroomQuestion(){
+  game.graded=game.graded||{};if(game.graded[game.index])return;
+  const q=game.questions[game.index],answers=classroomAnswers();
+  game.teams.forEach((t,i)=>{const a=answers[i];if(a){a.correct=a.value===q.correct;a.points=a.correct?3:0;t.score=Math.min(10000,t.score+a.points);}});
+  game.graded[game.index]=true;
+}
+function revealClassroom(){gradeClassroomQuestion();game.phase=3;stopTimer();persist();renderPhase();renderTeams();}
+function adjustClassroomScore(i,delta){
+  if(!game||game.type!=='classroom'||!game.teams[i]||![1,-1].includes(delta))return;
+  const t=game.teams[i],next=Math.max(0,Math.min(10000,t.score+delta)),actual=next-t.score;if(!actual)return;
+  t.score=next;game.history.push({type:'manual',team:i,delta:actual});persist();renderTeams();
+}
+function renderPhase(){
+  const phase=game.phase,step=phase===3?2:phase===0?0:1;
+  const names=['顯示題目','輸入各軍答案','揭曉及核對'],tips=['先讓學生閱讀題目及原文，準備答案。','點軍團圖示，選答案並儲存；依次記錄四軍。教師代填的先後不計速度分。','答對每題 3 分。可在軍功榜按＋／－調整分數，再進入下一題。'];
+  $('phases').innerHTML=names.map((name,i)=>'<div class="phase '+(i===step?'current':'')+'">'+(i+1)+'　'+name+'</div>').join('');
+  $('q-label').textContent=names[step];$('coach-title').textContent=names[step];$('coach').textContent=tips[step];
+  $('advance').textContent=phase===3?(game.index===game.questions.length-1?'完成戰役 →':'下一題 →'):phase===0?'輸入各軍答案 →':'揭曉及核對 →';
+  $('battle-subtitle').textContent='看題 → 點軍團記錄答案 → 揭曉核對；分數可手動加減。';
+  const q=game.questions[game.index];if(q.kind)$('question-prompt').textContent=IQ.names[q.kind];
+  renderClassroomInput();
+  if(phase===3){$('feedback').textContent='參考答案：'+answerText(q)+'。'+(q.explanation||'請回到原文，說明判斷依據。');$('feedback').classList.remove('hidden');}
+}
+function renderTeams(){
+  const answers=classroomAnswers(),q=game.questions[game.index],revealed=game.phase===3,active=[1,2].includes(game.phase);
+  $('teams').innerHTML='<p class="teacher-score-rule">答對 ＋3 · 答錯／未答 0<br>＋／－ 每次調整 1 分，最低 0 分。</p>'+game.teams.map((t,i)=>{const a=answers[i];return '<div class="team teacher-score-team"><div class="team-name"><span class="team-identity"><i class="team-avatar" style="--commander:var(--asset'+i%4+')" aria-hidden="true"></i>'+esc(t.name)+' <small class="class-rank">第 '+(1+game.teams.filter(other=>other.score>t.score).length)+' 位</small></span><strong aria-label="'+esc(t.name)+'分數">'+t.score+'</strong></div><p class="teacher-team-result">'+(revealed?(a?(a.correct?'✓ 答對 ＋3':'✕ 答錯 0 分'):'未記錄 · 0 分'):(a?'✓ 答案已儲存':'尚未儲存答案'))+'</p>'+(a?'<p class="teacher-saved-answer">'+esc(classroomAnswerLabel(q,a.value))+'</p>':'')+'<div class="team-controls"><button class="btn ghost" data-score-minus="'+i+'" aria-label="'+esc(t.name)+'減一分" '+(t.score<=0?'disabled':'')+'>−</button><button class="btn ghost" data-score-plus="'+i+'" aria-label="'+esc(t.name)+'加一分">＋</button>'+(active?'<button class="btn ghost" data-select-team="'+i+'">'+(a?'修改答案':'輸入答案')+'</button>':'')+'</div></div>';}).join('');
+  $$('[data-score-minus]').forEach(b=>b.onclick=()=>adjustClassroomScore(Number(b.dataset.scoreMinus),-1));
+  $$('[data-score-plus]').forEach(b=>b.onclick=()=>adjustClassroomScore(Number(b.dataset.scorePlus),1));
+  $$('[data-select-team]').forEach(b=>b.onclick=()=>selectClassroomTeam(Number(b.dataset.selectTeam)));
+  $('undo-score').disabled=!game.history.length;
+}
 function award(i,j){const key=i+':'+j;game.awards[game.index]=game.awards[game.index]||{};if(game.awards[game.index][key]||game.phase!==3)return;game.awards[game.index][key]=true;game.teams[i].score++;battleFlash("穩步推進");game.history.push({index:game.index,team:i,key});persist();renderTeams();sound();}
-function undoScore(){const a=game.history.pop();if(!a)return;delete game.awards[a.index][a.key];game.teams[a.team].score=Math.max(0,game.teams[a.team].score-1);persist();renderTeams();}
-function advance(){if(!game||game.completed)return;if(learningRequired()&&game.done&&!Number.isInteger(learningEntry().reflection)){toast('選一句反思，再前往下一關。');return;}if(game.type==='classroom'&&game.phase<3){game.phase++;stopTimer();persist();renderPhase();renderTeams();return;}if(game.type!=='classroom'&&!game.done)return;
-  if(game.index+1>=game.questions.length){finish();return;}game.index++;game.phase=0;game.attempts=[];game.hinted=false;game.timedOut=false;game.done=false;$('options').classList.remove('hidden');persist();renderQuestion();}
+function undoScore(){const a=game.history.pop();if(!a)return;if(a.type==='manual')game.teams[a.team].score=Math.max(0,Math.min(10000,game.teams[a.team].score-a.delta));else{delete game.awards[a.index][a.key];game.teams[a.team].score=Math.max(0,game.teams[a.team].score-1);}persist();renderTeams();}
+function advance(){if(!game||game.completed)return;if(learningRequired()&&game.done&&!Number.isInteger(learningEntry().reflection)){toast('選一句反思，再前往下一關。');return;}if(game.type==='classroom'&&game.phase<3){if(game.phase===0){game.phase=1;stopTimer();persist();renderPhase();renderTeams();}else{const missing=game.teams.filter((_,i)=>!classroomAnswers()[i]).length;if(missing)confirmAction('尚有軍團未儲存答案','尚有 '+missing+' 軍未儲存答案；繼續揭曉會按未答計 0 分。',revealClassroom);else revealClassroom();}return;}if(game.type!=='classroom'&&!game.done)return;
+  if(game.index+1>=game.questions.length){finish();return;}game.index++;game.phase=0;game.selectedTeam=0;game.attempts=[];game.hinted=false;game.timedOut=false;game.done=false;$('options').classList.remove('hidden');persist();renderQuestion();}
 function answer(choice){if(!game||game.type==='classroom'||game.done||game.attempts.includes(choice))return;if(!learningReady()){toast('先選一段線索和作答把握；不肯定也可以試。');return;}const q=game.questions[game.index];if(q.kind&&game.attempts.length>=12){skipQuestion();return;}game.attempts.push(choice);
   if(choice===q.correct){stopTimer();game.done=true;const first=game.attempts.length===1&&!game.hinted&&!game.timedOut;game.score+=first?3:1;game.answers.push({id:q.id,attempts:game.attempts.slice(),hinted:game.hinted,timedOut:false,firstCorrect:first,score:first?3:1});sound();battleFlash(first?"一語中的":"溫故知新");revealPractice();}
   else{sound(false);$('feedback').textContent='先回到原文：有沒有足夠線索支持這個選項？比較一下，再試一次。';$('feedback').className='feedback error';const b=$$('.option').find(b=>b.dataset.choice===choice);if(b){b.classList.add('wrong');b.disabled=true;}if(q.kind)toast('再調整一次，然後確認答案。');}
