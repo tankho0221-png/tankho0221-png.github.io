@@ -8,8 +8,8 @@ const config = JSON.parse(read('config/public.json'));
 if (config.liveUrl && !/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(config.liveUrl)) throw Error('liveUrl 必須是 Google Apps Script /exec 網址');
 if (config.assetBaseUrl && (!/^https:\/\/[A-Za-z0-9.-]+\/[A-Za-z0-9/_-]*$/.test(config.assetBaseUrl) || !config.assetBaseUrl.endsWith('/'))) throw Error('assetBaseUrl 必須是 HTTPS 路徑，並以 / 結尾');
 const safeJson = value => JSON.stringify(value).replace(/</g,'\\u003c');
-const js = 'const PUBLIC_CONFIG='+safeJson(config)+';\n'+read('src/interactive-core.js')+'\nconst IQ_SAMPLES='+safeJson(JSON.parse(read('data/interactive-samples.json')))+';\nconst DEMO_QUESTIONS='+safeJson(JSON.parse(read('data/demo-questions.json')))+'.concat(IQ_SAMPLES.map((q,i)=>({...IQ.validate(q),id:"iq-demo-"+i})));\n'+read('vendor/qrcode.js')+'\n'+read('src/remote.js')+'\n'+read('src/question-import.js')+'\n'+read('src/interactive-ui.js')+'\n'+read('src/interactive-author.js')+'\n'+read('src/app.js');
-const css = read('src/styles.css')+'\n'+read('src/interactive.css');
+const js = 'const PUBLIC_CONFIG='+safeJson(config)+';\n'+read('src/interactive-core.js')+'\nconst IQ_SAMPLES='+safeJson(JSON.parse(read('data/interactive-samples.json')))+';\nconst DEMO_QUESTIONS='+safeJson(JSON.parse(read('data/demo-questions.json')))+'.concat(IQ_SAMPLES.map((q,i)=>({...IQ.validate(q),id:"iq-demo-"+i})));\n'+read('vendor/qrcode.js')+'\n'+read('src/remote.js')+'\n'+read('src/question-import.js')+'\n'+read('src/interactive-ui.js')+'\n'+read('src/interactive-author.js')+'\n'+read('src/learning.js')+'\n'+read('src/session.js')+'\n'+read('src/live.js')+'\n'+read('src/teacher.js')+'\n'+read('src/app.js');
+const css = read('src/styles.css')+'\n'+read('src/interactive.css')+'\n'+read('src/learning.css');
 const template = read('src/index.html');
 const hash = crypto.createHash('sha256').update(css+js).digest('hex').slice(0,12);
 const cssName = `styles.${hash}.css`, jsName = `app.${hash}.js`;
@@ -32,5 +32,5 @@ const gasCss = css.replace(/\.\/assets\/(art-\d+\.webp)/g,(_,name)=>config.asset
 write('dist/apps-script/index.html',template.replace('<!-- STYLES -->',()=>'<style>'+gasCss+'</style>').replace('<!-- SCRIPTS -->',()=>'<script>'+js+'</script>'));
 write('dist/apps-script/Code.gs',read('src/interactive-core.js')+'\n'+read('apps-script/Code.gs')+'\nfunction bridgeDocument_(){return '+JSON.stringify(read('apps-script/bridge.html'))+';}\n');
 write('dist/apps-script/appsscript.json',read('apps-script/appsscript.json'));
-write('dist/build-report.json',JSON.stringify({version:'3.1.0',assetCount:fs.readdirSync(path.join(root,'public/assets')).length,htmlBytes:Buffer.byteLength(fs.readFileSync(path.join(dist,'pages/demo.html'))),gasHtmlBytes:Buffer.byteLength(fs.readFileSync(path.join(dist,'apps-script/index.html'))),assetMode:config.assetBaseUrl?'external':'embedded'},null,2));
+write('dist/build-report.json',JSON.stringify({version:'4.0.0',assetCount:fs.readdirSync(path.join(root,'public/assets')).length,htmlBytes:Buffer.byteLength(fs.readFileSync(path.join(dist,'pages/demo.html'))),gasHtmlBytes:Buffer.byteLength(fs.readFileSync(path.join(dist,'apps-script/index.html'))),assetMode:config.assetBaseUrl?'external':'embedded'},null,2));
 console.log(read('dist/build-report.json'));
