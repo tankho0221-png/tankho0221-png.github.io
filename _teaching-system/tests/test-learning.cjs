@@ -39,3 +39,17 @@ test('Unchanged live polls preserve the DOM instead of destroying active control
   r.players=[{name:'QA',isMe:false,answered:false}];ctx.renderLive(r);assert($('competition-board').innerHTML.includes('QA'));assert.equal($('live-view').innerHTML,'existing interactive DOM');
 });
 console.log(JSON.stringify({learningPassed:passed,total:passed}));
+
+test('Classroom interactive board opens for discussion and retains draft for showing answers',()=>{
+  const g=game('classroom');g.questions=[{id:'classify',kind:'classify',chapter:'test',sentence:'test',payload:{items:['a','b','c'],targets:['x','y']},correct:'[0,1,0]',distractors:[]}];
+  const render=ctx.renderInteractive,calls=[],draft={values:[1,null,null]};ctx.renderInteractive=(root,q,o)=>{calls.push(o);return o.draft||draft;};
+  try{g.phase=0;ctx.renderQuestion();assert.equal(calls.length,1);assert.equal(calls[0].disabled,true);
+    g.phase=1;ctx.renderPhase();assert.equal(calls.at(-1).disabled,false);assert.equal(calls.at(-1).boardOnly,true);
+    g.phase=2;ctx.renderPhase();assert.equal(calls.at(-1).draft,draft);assert.equal(calls.at(-1).disabled,false);
+    g.phase=3;ctx.renderPhase();assert.equal(calls.at(-1).disabled,true);assert.equal(calls.at(-1).revealed,true);assert.equal(g.teams[0].score,0);
+  }finally{ctx.renderInteractive=render;}
+});
+test('Original text is readable before answering and safely escaped separately from prompt',()=>{
+ const html=ctx.sentenceHTML({sentence:'【原文】\n甲曰：<script>不可信</script>\n【題目】\n先後如何？',targetWord:'時序布陣'});
+ assert(html.includes('<details class="question-reading" open>'));assert(html.includes('&lt;script&gt;'));assert(!html.includes('<script>'));assert(html.includes('<div class="question-task">先後如何？</div>'));
+});
