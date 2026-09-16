@@ -22,7 +22,7 @@ function renderInteractive(root,q,opts={}) {
     }else{
       html+='<p class="iq-instruction">點選劃去三個錯項，留下唯一正解。再點可還原。</p><div class="iq-eliminate">'+p.items.map((s,i)=>button(`<span>${state.removed.includes(i)?'×':'○'}</span> ${esc(s)}`,`data-remove="${i}" aria-pressed="${state.removed.includes(i)}"`)).join('')+'</div>';
     }
-    html+=`<p class="iq-status" aria-live="polite">${opts.revealed?'參考答案：'+esc(IQ.format(q)):(q.kind==='eliminate'?'已劃去 '+state.removed.length+' / 3 項':disabled?'等候主持人開放作答':'完成安排後，再確認答案。')}</p>`;
+    html+=`<p class="iq-status" aria-live="polite">${opts.revealed?'參考答案：'+esc(IQ.format(q)):(q.kind==='eliminate'?'已劃去 '+state.removed.length+' / 3 項':disabled?'本階段僅供閱讀；作答由主持人開放':'完成安排後，再確認答案。')}</p>`;
     if(!disabled)html+='<div class="iq-actions"><button type="button" class="btn ghost" data-reset>重布 · 重設</button><button type="button" class="btn primary" data-submit>確認答案</button></div>';
     root.innerHTML='<div class="iq-board">'+html+'</div>';
     if(opts.revealed)root.classList.add('iq-revealed');else root.classList.remove('iq-revealed');
