@@ -36,6 +36,6 @@ test('Unchanged live polls preserve the DOM instead of destroying active control
   const r={state:{status:'WAITING',phase:'think',index:0},question:null,players:[],isHost:false};
   ctx.renderLive(r);$('live-view').innerHTML='existing interactive DOM';ctx.renderLive(r);
   assert.equal($('live-view').innerHTML,'existing interactive DOM');
-  r.players=[{name:'QA',isMe:false,answered:false}];ctx.renderLive(r);assert($('live-view').innerHTML.includes('QA'));
+  r.players=[{name:'QA',isMe:false,answered:false}];ctx.renderLive(r);assert($('competition-board').innerHTML.includes('QA'));assert.equal($('live-view').innerHTML,'existing interactive DOM');
 });
 console.log(JSON.stringify({learningPassed:passed,total:passed}));
