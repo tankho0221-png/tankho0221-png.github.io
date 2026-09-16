@@ -80,4 +80,5 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden&&live)refr
 updateNetworkBanner();
 
 initLearning();
+WarMusic.init();
 bootApp();
