@@ -211,7 +211,8 @@ function getLiveState(pin,token) {
   const s=v.r.state, q=v.r.questions[s.index], reveal=s.phase==='reveal'||s.status==='FINISHED';
   const myAnswers=me?JSON.parse(me[3]):[];
   const visibleScore=p=>JSON.parse(p[3]).filter(a=>reveal||a.index<s.index).reduce((n,a)=>n+a.score,0);
-  const board=v.players.map(p=>{const u=JSON.parse(p[2]);return {name:u.studentClass+' · '+u.studentNumber+'號',score:visibleScore(p),answered:JSON.parse(p[3]).some(a=>a.index===s.index),isMe:p[1]===key};}).sort((a,b)=>b.score-a.score);
+  const visibleTime=p=>{const correct=JSON.parse(p[3]).filter(a=>(reveal||a.index<s.index)&&a.score>0);return correct.every(a=>Number.isFinite(a.elapsedMs))?correct.reduce((n,a)=>n+a.elapsedMs,0):null;};
+  const board=v.players.map(p=>{const u=JSON.parse(p[2]);return {name:u.studentClass+' · '+u.studentNumber+'號',score:visibleScore(p),elapsedMs:visibleTime(p),answered:JSON.parse(p[3]).some(a=>a.index===s.index),isMe:p[1]===key};}).sort((a,b)=>b.score-a.score);
   const question=s.status==='WAITING'?null:publicQ_(q,pin);
   if(question&&reveal) { question.correct=q.correct;question.explanation=q.explanation; }
   return {success:true,state:s,isHost,question,players:board,submitted:myAnswers.some(a=>a.index===s.index),myScore:me?visibleScore(me):0};
@@ -221,7 +222,7 @@ function hostLiveAction(pin,token,action) {
     const r=room_(pin);host_(r,token);const s=r.state;
     if(action==='start'&&s.status==='WAITING') {s.status='PLAYING';s.phase='think';}
     else if(action==='discuss'&&s.status==='PLAYING'&&s.phase==='think') s.phase='discuss';
-    else if(action==='answer'&&s.status==='PLAYING'&&['think','discuss'].includes(s.phase)) s.phase='answer';
+    else if(action==='answer'&&s.status==='PLAYING'&&['think','discuss'].includes(s.phase)) {s.phase='answer';s.answerOpenedAt=Date.now();}
     else if(action==='reveal'&&s.status==='PLAYING'&&s.phase==='answer') s.phase='reveal';
     else if(action==='next'&&s.status==='PLAYING'&&s.phase==='reveal') {if(s.index+1>=r.questions.length)s.status='FINISHED';else {s.index++;s.phase='think';}}
     else if(action==='close') s.status='FINISHED';
@@ -236,7 +237,8 @@ function submitLiveAnswer(pin,token,index,choice) {
     if(answers.some(x=>x.index===Number(index))) return {success:true,duplicate:true};
     if(r.state.status!=='PLAYING'||r.state.phase!=='answer'||r.state.index!==Number(index)) throw new Error('本題尚未開放或已截止作答。');
     const q=r.questions[index]; if(q.kind?!IQ.validAnswer(q,choice):[q.correct].concat(q.distractors).indexOf(String(choice))<0) throw new Error('選項無效。');
-    answers.push({index:Number(index),id:q.id,choice:String(choice),score:choice===q.correct?3:0});
+    const elapsedMs=Number.isFinite(r.state.answerOpenedAt)?Math.max(0,Math.round((Date.now()-r.state.answerOpenedAt)/1000)*1000):null;
+    answers.push({index:Number(index),id:q.id,choice:String(choice),score:choice===q.correct?3:0,elapsedMs});
     const score=answers.reduce((n,x)=>n+x.score,0);
     table_('PlayersV2').getRange(a.playerRow,4,1,3).setValues([[JSON.stringify(answers),score,answers.length===r.questions.length]]);
     CacheService.getScriptCache().remove('v2:room:'+pin);
