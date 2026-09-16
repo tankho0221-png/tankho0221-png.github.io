@@ -8,8 +8,6 @@ const storage={get(k,d=null){try{return JSON.parse(privateStore.getItem('rtk2:'+
 const uid=()=>crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random().toString(16).slice(2);
 let pollEpoch=0;let boot=null,teacherToken='',game=null,live=null,poll=null,pollBusy=false,timerHandle=null,remaining=30,timerDeadline=0,soundOn=false,audioCtx=null,modalPrevious=null,toastTimer=null,busy=false;
 const TEAMS=['青龍軍','白虎軍','朱雀軍','玄武軍'];
-const PHASES=['獨立思考','同袍商議','亮出答案','揭曉與修訂'];
-const COACH=['先給學生 30 秒，圈出一個字或作一個判斷。巡視後，才進入小組討論。','每人先讀出自己的答案，再比較證據。邀請一位同學準備解釋。','請各組同時亮出白板或答題卡。先請學生說理由，再揭曉答案。','每人用另一種顏色補上一處證據或理由。依判斷、證據和解釋分別給分。'];
 function shuffle(a,seed){a=a.slice();let x=Number(seed)||1;const rnd=()=>{let t=x+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296;};for(let i=a.length-1;i>0;i--){const j=Math.floor(rnd()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
 function chooseDemo(o){let q=DEMO_QUESTIONS.filter(q=>!o.chapter||o.chapter==='all'||q.chapter===o.chapter);if(!q.length)throw Error('此篇章暫無題目。');return shuffle(q,o.seed||Date.now()).slice(0,Math.max(1,Math.min(30,Number(o.count)||10)));}
 function rpc(name,...args){return new Promise((resolve,reject)=>{

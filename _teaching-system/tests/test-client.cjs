@@ -17,7 +17,7 @@ test('Timeout produces a reviewable failed answer, only once',()=>{const g=game(
 test('Wrong answer does not reset or restart timer',()=>{game();ctx.toggleTimer();const before=intervals;ctx.answer('頭髮');assert.equal(intervals,before);ctx.stopTimer();});
 test('Classroom criteria award once and undo restores availability',()=>{const g=game('classroom');g.phase=3;ctx.award(0,1);ctx.award(0,1);assert.equal(g.teams[0].score,1);ctx.undoScore();assert.equal(g.teams[0].score,0);ctx.award(0,1);assert.equal(g.teams[0].score,1);});
 test('Cannot award classroom points before reveal',()=>{const g=game('classroom');ctx.award(0,0);assert.equal(g.teams[0].score,0);});
-test('Classroom hides choices during first independent-thinking stage',()=>{game('classroom');ctx.renderQuestion();assert($('options').classList.contains('hidden'));});
+test('Classroom shows question choices read-only before team entry',()=>{game('classroom');ctx.renderQuestion();assert(!$('options').classList.contains('hidden'));assert(options.every(b=>b.disabled));});
 test('Switching from classroom to practice restores choices',()=>{game('practice');ctx.renderQuestion();assert(!$('options').classList.contains('hidden'));});
 test('Completed game ignores further advance clicks',()=>{const g=game('classroom');g.completed=true;ctx.advance();assert.equal(g.phase,0);});
 test('Student strings are escaped for DOM interpolation',()=>{assert.equal(ctx.escapeTest('<img src=x onerror="x">'), '&lt;img src=x onerror=&quot;x&quot;&gt;');});
