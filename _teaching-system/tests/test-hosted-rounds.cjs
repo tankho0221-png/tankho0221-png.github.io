@@ -1,0 +1,16 @@
+const {ctx}=require('./test-backend.cjs'),assert=require('node:assert/strict');
+const token=ctx.teacherLogin('test-only-password').token,r=ctx.createLiveRoom(token,{mode:'teacher',count:2});
+const profile={studentSchool:'S',studentClass:'QA',studentNumber:'91',studentTeam:'青龍軍'};
+const a=ctx.joinLiveRoom(r.pin,profile).playerToken,b=ctx.joinLiveRoom(r.pin,{...profile,studentNumber:'92',studentTeam:'白虎軍'}).playerToken;
+const state=t=>ctx.getLiveState(r.pin,t),qs=ctx.room_(r.pin).questions;
+ctx.hostLiveAction(r.pin,r.hostToken,'start');assert.equal(state(a).state.phase,'answer');assert.throws(()=>ctx.hostLiveAction(r.pin,a,'reveal'));
+ctx.useRaceStratagem(r.pin,a,0,'rally');ctx.submitLiveAnswer(r.pin,a,0,qs[0].distractors[0]);assert(state(a).retryPending);assert.equal(state(a).lastResult,null);
+ctx.submitLiveAnswer(r.pin,a,0,qs[0].correct);ctx.submitLiveAnswer(r.pin,b,0,qs[0].correct);
+assert.equal(state(a).state.index,0);assert.equal(state(a).question.correct,undefined);assert.equal(state(a).myScore,0);assert.equal(state(a).lastResult,null);assert.equal(state(a).teams[0].roundPoints,null);assert.equal(state(r.hostToken).players[1].score,0);
+assert.throws(()=>ctx.useRaceStratagem(r.pin,b,0,'hint'));assert.throws(()=>ctx.submitLiveAnswer(r.pin,a,1,qs[1].correct));
+ctx.hostLiveAction(r.pin,r.hostToken,'reveal');assert.equal(state(a).lastResult.points,1);assert.equal(state(a).teams[0].roundPoints,1);assert.equal(state(a).teams[1].roundPoints,3);assert.equal(state(a).lastResult.correct,true);assert.equal(state(b).myScore,3);
+assert.throws(()=>ctx.useRaceStratagem(r.pin,a,0,'hint'));assert.throws(()=>ctx.submitLiveAnswer(r.pin,a,1,qs[1].correct));
+ctx.hostLiveAction(r.pin,r.hostToken,'next');assert.equal(state(a).state.phase,'answer');assert.equal(state(a).state.index,1);assert.equal(state(a).submitted,false);assert.equal(state(a).question.correct,undefined);assert.equal(state(a).lastResult,null);assert.equal(state(a).tools.rally.index,0);assert.equal(Object.keys(state(b).tools).length,0);
+ctx.submitLiveAnswer(r.pin,b,1,qs[1].distractors[0]);ctx.hostLiveAction(r.pin,r.hostToken,'reveal');assert.equal(state(b).lastResult.correct,false);assert.equal(state(b).lastResult.choice,qs[1].distractors[0]);assert.equal(state(a).lastResult.choice,'未作答');assert.equal(state(a).teams[0].roundPoints,0);ctx.hostLiveAction(r.pin,r.hostToken,'next');assert.equal(state(a).state.status,'FINISHED');assert.equal(state(a).review.length,2);
+console.log('PASS Teacher reveal/next controls, answer privacy, four-army gains, personal correctness, stratagem retry and missing answers');
+const vm=require('vm'),client=require('./test-client.cjs');vm.runInContext("live={pin:'123456',token:'test'};lastLiveQuestion='';lastLiveRender='';",client.ctx);client.ctx.renderLive(state(b));assert(client.$('live-view').innerHTML.includes('本題軍功'));assert(client.$('live-view').innerHTML.includes('你的答案'));console.log('PASS Revealed round displays army gains and personal feedback');
