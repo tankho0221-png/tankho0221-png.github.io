@@ -55,5 +55,5 @@ const gasCss = css.replace(/\.\/assets\/(art-\d+\.webp)/g,(_,name)=>config.asset
 write('dist/apps-script/index.html',template.replace('<!-- STYLES -->',()=>'<style>'+gasCss+'</style>').replace('<!-- SCRIPTS -->',()=>'<script>'+js+'</script>'));
 write('dist/apps-script/Code.gs',read('src/interactive-core.js')+'\n'+read('apps-script/Code.gs')+'\nfunction bridgeDocument_(){return '+JSON.stringify(read('apps-script/bridge.html'))+';}\n');
 write('dist/apps-script/appsscript.json',read('apps-script/appsscript.json'));
-write('dist/build-report.json',JSON.stringify({version:'4.1.0',assetCount:fs.readdirSync(path.join(root,'public/assets')).length,htmlBytes:Buffer.byteLength(fs.readFileSync(path.join(dist,'pages/demo.html'))),gasHtmlBytes:Buffer.byteLength(fs.readFileSync(path.join(dist,'apps-script/index.html'))),assetMode:config.assetBaseUrl?'external':'embedded'},null,2));
+write('dist/build-report.json',JSON.stringify({version:'4.3.0',assetCount:fs.readdirSync(path.join(root,'public/assets')).length,htmlBytes:Buffer.byteLength(fs.readFileSync(path.join(dist,'pages/demo.html'))),gasHtmlBytes:Buffer.byteLength(fs.readFileSync(path.join(dist,'apps-script/index.html'))),assetMode:config.assetBaseUrl?'external':'embedded'},null,2));
 console.log(read('dist/build-report.json'));
