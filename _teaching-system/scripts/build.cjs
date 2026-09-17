@@ -21,7 +21,30 @@ fs.cpSync(path.join(root,'public/assets'),path.join(dist,'pages/assets'),{recurs
 write('dist/pages/'+cssName, css);
 write('dist/pages/'+jsName, js);
 write('dist/pages/demo.html', template.replace('<!-- STYLES -->',()=>`<link rel="stylesheet" href="./${cssName}">`).replace('<!-- SCRIPTS -->',()=>`<script src="./${jsName}" defer></script>`));
-write('dist/pages/play.html',fs.readFileSync(path.join(dist,'pages/demo.html')));
+// Open the live app as a top-level page. A Google bridge embedded on GitHub
+// depends on cross-site browser policies; the native app uses google.script.run.
+if (!config.liveUrl) throw Error('liveUrl is required for the public entry');
+write('dist/pages/play.html', `<!doctype html>
+<html lang="zh-HK"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>出師北伐 · 正在開啟</title>
+<style>body{margin:0;padding:24px;background:#14291f;color:#f4eedb;font:18px/1.7 system-ui,sans-serif}main{max-width:560px;margin:12vh auto}a{display:inline-block;padding:14px 24px;background:#ecd494;color:#14291f;border-radius:8px}a:focus-visible{outline:3px solid white;outline-offset:5px}</style>
+</head><body><main><h1>出師北伐</h1><p role="status">正在開啟教學系統；如未自動跳轉，請按下方按鈕。</p>
+<a id="open-system" href="${config.liveUrl}">開啟教學系統</a>
+<noscript><p>教學系統需要 JavaScript，請啟用後開啟。</p></noscript></main>
+<script>
+(function () {
+  var target = new URL(${safeJson(config.liveUrl)});
+  var incoming = new URLSearchParams(window.location.search);
+  ['mode', 'pin', 'chapter', 'count', 'seed'].forEach(function (key) {
+    var value = incoming.get(key);
+    if (value !== null) target.searchParams.set(key, value.slice(0, 200));
+  });
+  document.getElementById('open-system').href = target.href;
+  window.location.replace(target.href);
+}());
+</script></body></html>`);
 write('dist/pages/index.html',read('src/portal.html'));
 write('dist/pages/portal.css',read('src/portal.css'));
 write('dist/pages/portal.js',read('src/portal.js'));
