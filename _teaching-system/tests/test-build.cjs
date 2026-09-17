@@ -7,4 +7,31 @@ test('Source contains no original spreadsheet binding',()=>{assert(!read('apps-s
 test('Pages portal labels demo and current deployment version',()=>{assert(read('src/portal.html').includes('成績保存在本機'));assert(read('src/portal.js').includes('config.liveVersion'));});
 test('Generated Apps Script JavaScript parses',()=>{new vm.Script(read('dist/apps-script/Code.gs'));new vm.Script(read('dist/apps-script/index.html').match(/<script>([\s\S]*?)<\/script>/)[1]);});
 test('Portal JavaScript parses',()=>new vm.Script(read('src/portal.js')));
-console.log(JSON.stringify({passed,total:6}));
+function resolveEntry(search) {
+  const html=read('dist/pages/play.html');
+  const link={};let destination;
+  vm.runInNewContext(html.match(/<script>([\s\S]*?)<\/script>/)[1],{
+    URL,URLSearchParams,document:{getElementById:id=>{assert.equal(id,'open-system');return link;}},
+    window:{location:{search,replace:url=>{destination=url;}}}
+  });
+  assert.equal(link.href,destination);
+  assert(!html.includes('<iframe'));
+  assert(!/src="\.\/app\./.test(html));
+  return new URL(destination);
+}
+test('Public entry opens the configured native app without a cross-site bridge',()=>{
+  assert.equal(resolveEntry('').href,JSON.parse(read('config/public.json')).liveUrl);
+});
+test('Public entry preserves classroom and Chinese practice links',()=>{
+  const params=new URLSearchParams({mode:'live',pin:'012345',chapter:'論仁、論孝、論君子',count:'5',seed:'1234'});
+  const target=resolveEntry('?'+params);
+  for(const [key,value] of params)assert.equal(target.searchParams.get(key),value);
+});
+test('Public entry discards capabilities and cannot be made an open redirect',()=>{
+  const target=resolveEntry('?hostToken=secret&token=secret&bridge=1&channel=secret&redirect=https://example.com&chapter='+ 'a'.repeat(300));
+  assert.equal(target.origin,'https://script.google.com');
+  for(const key of ['hostToken','token','bridge','channel','redirect'])assert.equal(target.searchParams.get(key),null);
+  assert.equal(target.searchParams.get('chapter').length,200);
+  assert.equal(target.hash,'');
+});
+console.log(JSON.stringify({passed,total:9}));
