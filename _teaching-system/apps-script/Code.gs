@@ -2,7 +2,7 @@
  * Replace the old Code.gs and index.html together. See 安裝與測試指南.md.
  * Every helper ends in '_' so google.script.run cannot call it.
  */
-const APP_ = { version: '4.3.0', ttl: 180, zone: 'Asia/Hong_Kong' };
+const APP_ = { version: '4.4.0', ttl: 180, zone: 'Asia/Hong_Kong' };
 const HEADERS_ = {
   RunsV2: ['ID','CreatedAt','IdentityJSON','Mode','QuestionsJSON','ResultsJSON','Status'],
   RecordsV2: ['RunID','Date','School','Class','Number','Name','Team','Mode','Score','MaxScore','Accuracy','Count'],
@@ -276,13 +276,51 @@ function submitLiveAnswer(pin,token,index,choice) {
 }
 function getTeacherAnalytics(token,filters) {
   teacher_(token);filters=filters||{};
-  const records=rows_('RecordsV2').filter(r=>(!filters.school||String(r[2])===filters.school)&&(!filters.className||String(r[3])===filters.className));
-  const legacy=rows_('Records'); const lessons=rows_('LessonsV2').filter(r=>(!filters.school||String(r[2])===filters.school)&&(!filters.className||String(r[3])===filters.className));
-  const stats={};rows_('MistakesV2').filter(r=>r[5]==='ACTIVE').forEach(r=>{const q=JSON.parse(r[2]);if(!stats[q.id])stats[q.id]={chapter:q.chapter,word:q.targetWord,correct:q.correct,count:0};stats[q.id].count++;});
-  return {success:true,totalBattles:records.length,avgAccuracy:records.length?Math.round(records.reduce((n,r)=>n+(Number(r[10])||0),0)/records.length):0,
-    legacyRecords:legacy.length,classroomSessions:lessons.length,liveRooms:rows_('RoomsV2').length,
-    difficultWords:(!filters.school&&!filters.className)?Object.values(stats).sort((a,b)=>b.count-a.count).slice(0,10):[],
-    recent:records.slice(-20).reverse().map(r=>({date:String(r[1]),className:String(r[3]),number:String(r[4]),score:r[8],maxScore:r[9],accuracy:r[10]}))};
+  const days=Math.max(0,Number(filters.days)||0),cutoff=days?Date.now()-days*86400000:0;
+  const inRange=date=>!cutoff||new Date(String(date)).getTime()>=cutoff;
+  const allRecords=rows_('RecordsV2');
+  const records=allRecords.filter(r=>(!filters.school||String(r[2])===filters.school)&&(!filters.className||String(r[3])===filters.className)&&inRange(r[1]));
+  const legacy=rows_('Records');
+  const lessons=rows_('LessonsV2').filter(r=>(!filters.school||String(r[2])===filters.school)&&(!filters.className||String(r[3])===filters.className)&&inRange(r[1]));
+  const parsedRuns=[];
+  rows_('RunsV2').forEach(row=>{
+    let profile,questions,results;
+    try{profile=JSON.parse(row[2]);questions=JSON.parse(row[4]);results=JSON.parse(row[5]);}catch(e){return;}
+    if(!Array.isArray(questions)||!Array.isArray(results)||!inRange(row[1]))return;
+    if(filters.school&&profile.studentSchool!==filters.school)return;
+    if(filters.className&&profile.studentClass!==filters.className)return;
+    parsedRuns.push({date:String(row[1]),profile,questions,results});
+  });
+  const students={};
+  if(filters.unit){
+    parsedRuns.forEach(run=>{
+      const selected=run.questions.map((q,i)=>({q,result:run.results[i]||{}})).filter(x=>x.q.chapter===filters.unit);
+      if(!selected.length)return;
+      const p=run.profile,key=identityKey_(p),x=students[key]||(students[key]={school:String(p.studentSchool||''),className:String(p.studentClass||''),number:String(p.studentNumber||''),name:String(p.studentName||''),attempts:0,correct:0,questions:0,activeMistakes:0,lastDate:''});
+      x.attempts++;x.questions+=selected.length;x.correct+=selected.filter(y=>y.result.firstCorrect).length;if(run.date>x.lastDate)x.lastDate=run.date;
+    });
+  } else {
+    records.forEach(r=>{const key=identityKey_({studentSchool:String(r[2]),studentClass:String(r[3]),studentNumber:String(r[4])}),x=students[key]||(students[key]={school:String(r[2]),className:String(r[3]),number:String(r[4]),name:String(r[5]||''),attempts:0,accuracyTotal:0,activeMistakes:0,lastDate:''});x.attempts++;x.accuracyTotal+=Number(r[10])||0;if(String(r[1])>x.lastDate)x.lastDate=String(r[1]);});
+  }
+  const selectedIdentities=new Set(Object.keys(students));
+  rows_('MistakesV2').forEach(r=>{
+    if(r[5]!=='ACTIVE'||!selectedIdentities.has(String(r[0])))return;
+    if(filters.unit){let q;try{q=JSON.parse(r[2]);}catch(e){return;}if(!q||q.chapter!==filters.unit)return;}
+    students[r[0]].activeMistakes++;
+  });
+  const studentRows=Object.values(students).map(x=>({...x,accuracy:filters.unit?(x.questions?Math.round(x.correct*100/x.questions):0):Math.round(x.accuracyTotal/x.attempts)})).sort((a,b)=>b.activeMistakes-a.activeMistakes||a.accuracy-b.accuracy);
+  const errorStats={};
+  parsedRuns.forEach(run=>run.questions.forEach((q,i)=>{
+    if(filters.unit&&q.chapter!==filters.unit)return;
+    const result=run.results[i]||{},key=q.id||questionKey_(q),x=errorStats[key]||(errorStats[key]={id:key,chapter:q.chapter||'',word:q.targetWord||'',correct:q.correct||'',asked:0,firstWrong:0,wrongChoices:{}});
+    x.asked++;
+    const choice=Array.isArray(result.attempts)?String(result.attempts[0]||'未作答'):'未作答';
+    if(choice!==String(q.correct||'')){x.firstWrong++;x.wrongChoices[choice]=(x.wrongChoices[choice]||0)+1;}
+  }));
+  const commonErrors=Object.values(errorStats).filter(x=>x.firstWrong).map(x=>{const top=Object.entries(x.wrongChoices).sort((a,b)=>b[1]-a[1])[0]||['—',0];return {id:x.id,chapter:x.chapter,word:x.word,correct:x.correct,asked:x.asked,firstWrong:x.firstWrong,wrongRate:Math.round(x.firstWrong*100/x.asked),topWrong:top[0],topWrongCount:top[1]};}).sort((a,b)=>b.firstWrong-a.firstWrong).slice(0,10);
+  const schools=[...new Set(allRecords.map(r=>String(r[2])).filter(Boolean))].sort(),classes=[...new Set(allRecords.filter(r=>!filters.school||String(r[2])===filters.school).map(r=>String(r[3])).filter(Boolean))].sort();
+  const avgAccuracy=filters.unit?(studentRows.length?Math.round(studentRows.reduce((n,x)=>n+x.correct,0)*100/studentRows.reduce((n,x)=>n+x.questions,0)):0):(records.length?Math.round(records.reduce((n,r)=>n+(Number(r[10])||0),0)/records.length):0);
+  return {success:true,totalBattles:filters.unit?parsedRuns.filter(run=>run.questions.some(q=>q.chapter===filters.unit)).length:records.length,avgAccuracy,participants:studentRows.length,followUpStudents:studentRows.filter(x=>x.activeMistakes>0||x.accuracy<70).length,classroomSessions:lessons.length,legacyRecords:legacy.length,liveRooms:rows_('RoomsV2').length,filterOptions:{schools,classes},commonErrors,difficultWords:commonErrors.map(x=>({chapter:x.chapter,word:x.word,correct:x.correct,count:x.firstWrong})),students:studentRows.slice(0,100),recent:records.slice(-40).reverse().map(r=>({date:String(r[1]),school:String(r[2]),className:String(r[3]),number:String(r[4]),name:String(r[5]||''),score:r[8],maxScore:r[9],accuracy:r[10]}))};
 }
 /** Run manually in Apps Script editor only; never clears existing sheets. */
 function setupSystem_() {
