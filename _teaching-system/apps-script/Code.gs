@@ -2,7 +2,7 @@
  * Replace the old Code.gs and index.html together. See 安裝與測試指南.md.
  * Every helper ends in '_' so google.script.run cannot call it.
  */
-const APP_ = { version: '3.1.0', ttl: 180, zone: 'Asia/Hong_Kong' };
+const APP_ = { version: '4.3.0', ttl: 180, zone: 'Asia/Hong_Kong' };
 const HEADERS_ = {
   RunsV2: ['ID','CreatedAt','IdentityJSON','Mode','QuestionsJSON','ResultsJSON','Status'],
   RecordsV2: ['RunID','Date','School','Class','Number','Name','Team','Mode','Score','MaxScore','Accuracy','Count'],
@@ -42,7 +42,9 @@ function rows_(name) {
 function append_(sh, rows) { if (rows.length) sh.getRange(sh.getLastRow()+1,1,rows.length,rows[0].length).setValues(rows); }
 function lock_(fn) {
   const lock = LockService.getScriptLock();
-  if (!lock.tryLock(15000)) throw new Error('軍報繁忙，請稍後重試。');
+  // A class may scan the same QR code together. Give queued writes enough time
+  // to drain, while staying below the browser RPC timeout.
+  if (!lock.tryLock(20000)) throw new Error('同時連線人數較多，系統正在排隊，請稍後重試。');
   try { return fn(); } finally { SpreadsheetApp.flush(); lock.releaseLock(); }
 }
 function clean_(s, max) { return String(s == null ? '' : s).trim().slice(0,max || 200); }
@@ -56,6 +58,7 @@ function identityKey_(p) { return hash_([p.studentSchool,p.studentClass,p.studen
 function snapshot_(q) { const s=JSON.stringify(q); if(s.length>45000) throw new Error('本次文字量過大，請減少題數至五題或十題。'); return s; }
 function cacheGet_(k) { try { const v=CacheService.getScriptCache().get(k); return v ? JSON.parse(v) : null; } catch(e) { return null; } }
 function cachePut_(k,v,ttl) { try { const s=JSON.stringify(v); if (Utilities.newBlob(s).getBytes().length < 95000) CacheService.getScriptCache().put(k,s,ttl || APP_.ttl); } catch(e) {} }
+function cacheRemove_(k) { try { CacheService.getScriptCache().remove(k); } catch(e) {} }
 function identity_(p) {
   p=p || {}; const num=clean_(p.studentNumber,8);
   return {studentSchool:clean_(p.studentSchool,100),studentClass:clean_(p.studentClass,12).replace(/\s/g,'').toUpperCase(),
@@ -161,13 +164,14 @@ function saveClassroom(token,summary) {
 }
 function room_(pin) {
   if(!/^\d{6}$/.test(String(pin))) throw new Error('請輸入六位房間碼。');
-  const rows=rows_('RoomsV2'), i=rows.findIndex(r=>String(r[0])===String(pin));
-  if(i<0) throw new Error('找不到房間。');
-  if(Date.now()-new Date(rows[i][4]).getTime()>6*3600000) throw new Error('房間已過期，請建立新房間。');
-  return {row:i+2,pin:String(pin),host:rows[i][1],state:JSON.parse(rows[i][2]),questions:JSON.parse(rows[i][3]),created:String(rows[i][4])};
+  const key='v2:roomRow:'+pin,sh=table_('RoomsV2');let row=Number(cacheGet_(key)),values;
+  if(row>=2){values=sh.getRange(row,1,1,5).getValues()[0];if(String(values[0])!==String(pin)){row=0;values=null;}}
+  if(!row){const rows=rows_('RoomsV2'),i=rows.findIndex(r=>String(r[0])===String(pin));if(i<0)throw new Error('找不到房間。');row=i+2;values=rows[i];cachePut_(key,row,21600);}
+  if(Date.now()-new Date(values[4]).getTime()>6*3600000) throw new Error('房間已過期，請建立新房間。');
+  return {row,pin:String(pin),host:values[1],state:JSON.parse(values[2]),questions:JSON.parse(values[3]),created:String(values[4])};
 }
 function host_(room,token) { if(!token || room.host!==hash_(token)) throw new Error('只有主持人可以操作。'); }
-function writeRoom_(r) { r.state.revision++; table_('RoomsV2').getRange(r.row,3).setValue(JSON.stringify(r.state));CacheService.getScriptCache().remove('v2:room:'+r.pin); }
+function writeRoom_(r) { r.state.revision++;table_('RoomsV2').getRange(r.row,3).setValue(JSON.stringify(r.state));const v=cacheGet_('v2:room:'+r.pin);if(v){v.r=r;cachePut_('v2:room:'+r.pin,v,8);}else cacheRemove_('v2:room:'+r.pin); }
 function publicQ_(q,pin) { if(q?.kind)return {id:q.id,chapter:q.chapter,sentence:q.sentence,targetWord:q.targetWord,kind:q.kind,payload:q.payload,options:[]}; return q ? {id:q.id,chapter:q.chapter,sentence:q.sentence,targetWord:q.targetWord,options:shuffle_([q.correct].concat(q.distractors),Number(pin)+parseInt(q.id.slice(0,6),16))}:null; }
 function createLiveRoom(token,opts) {
   teacher_(token); const q=select_(opts);
@@ -176,34 +180,42 @@ function createLiveRoom(token,opts) {
     for(let i=0;i<100;i++) {pin=String(100000+Math.floor(Math.random()*900000));if(!existing.has(pin))break;pin=null;}
     if(!pin) throw new Error('未能分配房間碼，請重試。');
     const host=id_()+id_(); const state={status:'WAITING',index:0,phase:'think',revision:1,count:q.length,chapter:opts.chapter || 'all',mode:opts.mode==='race'?'race':opts.mode==='teacher'?'teacher':'hosted',durationSec:number_(opts.durationSec,120,1800,600)};
-    append_(table_('RoomsV2'),[[pin,hash_(host),JSON.stringify(state),snapshot_(q),new Date().toISOString()]]);
+    const sh=table_('RoomsV2'),created=new Date().toISOString(),row=sh.getLastRow()+1;
+    append_(sh,[[pin,hash_(host),JSON.stringify(state),snapshot_(q),created]]);
+    const r={row,pin,host:hash_(host),state,questions:q,created};cachePut_('v2:roomRow:'+pin,row,21600);cachePut_('v2:room:'+pin,{r,players:[]},8);
     return {success:true,pin,hostToken:host,state};
   });
 }
-function joinLiveRoom(pin,profile) {
+function joinLiveRoom(pin,profile,clientToken) {
   return lock_(()=>{
     const r=room_(pin); if(r.state.status!=='WAITING') throw new Error('戰役已開始，請等候下一場。');
     const p=identity_(profile); if(!p.studentClass||!p.studentNumber) throw new Error('請填寫班別及學號。');
-    const players=rows_('PlayersV2').filter(x=>String(x[0])===String(pin));
+    const roomKey='v2:room:'+pin,cached=cacheGet_(roomKey);
+    const players=cached?cached.players:rows_('PlayersV2').filter(x=>String(x[0])===String(pin));
+    const supplied=clean_(clientToken,160),token=/^[A-Za-z0-9-]{40,160}$/.test(supplied)?supplied:id_()+id_(),tokenHash=hash_(token);
+    const same=players.find(x=>{const v=JSON.parse(x[2]);return v.studentSchool===p.studentSchool&&v.studentClass===p.studentClass&&v.studentNumber===p.studentNumber;});
+    if(same&&same[1]===tokenHash)return {success:true,pin:String(pin),playerToken:token,duplicate:true};
     if(players.length>=60) throw new Error('房間已滿（60 人）。');
-    if(players.some(x=>{const v=JSON.parse(x[2]);return v.studentSchool===p.studentSchool&&v.studentClass===p.studentClass&&v.studentNumber===p.studentNumber;})) throw new Error('此學號已加入，請返回原來的分頁。');
-    const token=id_()+id_();append_(table_('PlayersV2'),[[String(pin),hash_(token),JSON.stringify(p),'[]',0,false]]);
-    CacheService.getScriptCache().remove('v2:room:'+pin);return {success:true,pin:String(pin),playerToken:token};
+    if(same) throw new Error('此學號已加入，請返回原來的分頁。');
+    const sh=table_('PlayersV2'),row=sh.getLastRow()+1,player=[String(pin),tokenHash,JSON.stringify(p),'[]',0,false];append_(sh,[player]);
+    cachePut_('v2:player:'+pin+':'+tokenHash,row,21600);const v=cached||{r,players:[]};v.players.push(player);cachePut_(roomKey,v,30);
+    return {success:true,pin:String(pin),playerToken:token};
   });
 }
 function liveAccess_(pin,token) {
   const r=room_(pin), key=hash_(token || '');
   if(r.host===key) return {r,isHost:true};
-  const players=rows_('PlayersV2');const idx=players.findIndex(p=>String(p[0])===String(pin)&&p[1]===key);
-  if(idx<0) throw new Error('房間憑證無效，請重新加入。');
-  return {r,isHost:false,player:players[idx],playerRow:idx+2};
+  const cacheKey='v2:player:'+pin+':'+key,sh=table_('PlayersV2');let row=Number(cacheGet_(cacheKey)),player;
+  if(row>=2){player=sh.getRange(row,1,1,6).getValues()[0];if(String(player[0])!==String(pin)||player[1]!==key){row=0;player=null;}}
+  if(!row){const players=rows_('PlayersV2'),idx=players.findIndex(p=>String(p[0])===String(pin)&&p[1]===key);if(idx<0)throw new Error('房間憑證無效，請重新加入。');row=idx+2;player=players[idx];cachePut_(cacheKey,row,21600);}
+  return {r,isHost:false,player,playerRow:row,playerKey:key};
 }
 function getLiveState(pin,token) {
   // Cache shared read model, but verify capability against the cached token hashes.
   let v=cacheGet_('v2:room:'+pin);
   if(!v) {
     const r=room_(pin), players=rows_('PlayersV2').filter(p=>String(p[0])===String(pin));
-    v={r,players};cachePut_('v2:room:'+pin,v,4);
+    v={r,players};cachePut_('v2:room:'+pin,v,8);
   }
   if(Date.now()-new Date(v.r.created || 0).getTime()>6*3600000 && v.r.created) throw new Error('房間已過期。');
   const key=hash_(token||''), isHost=v.r.host===key, me=v.players.find(p=>p[1]===key);
@@ -255,8 +267,9 @@ function submitLiveAnswer(pin,token,index,choice) {
     const streak=choice===q.correct&&!retried?(previous?.index===Number(index)-1?previous.streak||0:0)+1:0;
     answers.push({index:Number(index),id:q.id,choice:String(choice),score:choice===q.correct?(retried?1:3):0,elapsedMs,submittedAt,streak});
     const score=answers.reduce((n,x)=>n+x.score,0);
-    table_('PlayersV2').getRange(a.playerRow,4,1,3).setValues([[JSON.stringify(answers),score,answers.length===r.questions.length]]);
-    CacheService.getScriptCache().remove('v2:room:'+pin);
+    const answerJSON=JSON.stringify(answers),finished=answers.length===r.questions.length;
+    table_('PlayersV2').getRange(a.playerRow,4,1,3).setValues([[answerJSON,score,finished]]);
+    const cached=cacheGet_('v2:room:'+pin);if(cached){const player=cached.players.find(p=>p[1]===a.playerKey);if(player){player[3]=answerJSON;player[4]=score;player[5]=finished;}cached.r=r;cachePut_('v2:room:'+pin,cached,8);}else cacheRemove_('v2:room:'+pin);
     // Hosted quizzes reveal together; races return personal feedback on the next state read.
     return {success:true};
   });

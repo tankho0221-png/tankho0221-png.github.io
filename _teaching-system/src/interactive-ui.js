@@ -67,6 +67,6 @@ function mountLiveInteractive(r){
   const root=$('live-view').querySelector('.options'),q=r.question;if(!root)return;
   const key=live.pin+':'+r.state.index;
   const draft=iqLiveDrafts.get(key);
-  const next=renderInteractive(root,q,{draft,disabled:r.isHost||r.state.phase!=='answer'||r.submitted,readOnlyMessage:r.isHost?'主持人總覽：請由學生在自己的裝置作答。':r.submitted?'軍報已提交，請等候揭曉。':'等待老師開放作答。',revealed:r.state.phase==='reveal',seed:Number(live.pin),onSubmit:async value=>{await rpc('submitLiveAnswer',live.pin,live.token,r.state.index,value);lastLiveQuestion='';await refreshLive();}});
+  const next=renderInteractive(root,q,{draft,disabled:r.isHost||r.state.phase!=='answer'||r.submitted,readOnlyMessage:r.isHost?'主持人總覽：請由學生在自己的裝置作答。':r.submitted?'軍報已提交，請等候揭曉。':'等待老師開放作答。',revealed:r.state.phase==='reveal',seed:Number(live.pin),onSubmit:async value=>{await liveRpc_('submitLiveAnswer',[live.pin,live.token,r.state.index,value]);lastLiveQuestion='';await refreshLive();}});
   iqLiveDrafts.set(key,next);if(iqLiveDrafts.size>30)iqLiveDrafts.delete(iqLiveDrafts.keys().next().value);
 }
